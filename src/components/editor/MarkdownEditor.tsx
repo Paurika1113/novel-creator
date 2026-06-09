@@ -1,6 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useEditorStore } from '../../stores/editorStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
+import { useChatStore } from '../../stores/chatStore'
+
+const INLINE_ACTIONS = [
+  { id: 'polish', label: '润色', prompt: '请润色以下文本，优化表达和语感，保持原文意思不变：\n\n' },
+  { id: 'rewrite', label: '改写', prompt: '请用不同的表达方式改写以下文本，保持核心信息不变：\n\n' },
+  { id: 'expand', label: '扩写', prompt: '请在以下文本基础上进行扩写，丰富细节和描写，保持文风一致：\n\n' },
+  { id: 'shorten', label: '缩写', prompt: '请缩写以下文本，保留核心信息，去除冗余：\n\n' },
+]
 
 function renderMarkdown(text: string): string {
   const escaped = text
@@ -43,6 +51,13 @@ export default function MarkdownEditor() {
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const cursorRef = useRef<{ start: number; end: number } | null>(null)
+
+  // Inline AI selection state
+  const [selectedText, setSelectedText] = useState('')
+  const [selectionPos, setSelectionPos] = useState<{ top: number; left: number } | null>(null)
+  const addMessage = useChatStore((s) => s.addMessage)
+  const setActiveAgent = useChatStore((s) => s.setActiveAgent)
+  const isStreaming = useChatStore((s) => s.isStreaming)
 
   // Auto-save 30s after last change
   useEffect(() => {
@@ -116,7 +131,7 @@ export default function MarkdownEditor() {
     updateContent(newText)
   }
 
-  // Handle text selection for workflow rewrite
+  // Handle text selection for workflow rewrite + inline AI
   function handleSelectionChange() {
     const ta = textareaRef.current
     if (!ta) return
@@ -125,8 +140,35 @@ export default function MarkdownEditor() {
     const end = ta.selectionEnd
     if (start !== end) {
       const selected = ta.value.substring(start, end)
+      setSelectedText(selected)
       workflow.setSelectedText(selected)
+
+      // Calculate position for inline action bar
+      const textUpToCursor = ta.value.substring(0, start)
+      const lines = textUpToCursor.split('\n')
+      const lineNumber = lines.length
+      const colNumber = lines[lines.length - 1].length
+      // Approximate position: each line ~18px height, with scroll offset
+      const lineHeight = 18
+      const scrollTop = ta.scrollTop
+      const top = (lineNumber - 1) * lineHeight - scrollTop + 30 // offset below toolbar
+      const left = Math.min(colNumber * 7.5, ta.offsetWidth - 320)
+      setSelectionPos({ top: Math.max(top, 4), left: Math.max(left, 8) })
+    } else {
+      setSelectedText('')
+      setSelectionPos(null)
     }
+  }
+
+  // Send selected text to AI agent
+  function handleInlineAction(action: typeof INLINE_ACTIONS[number]) {
+    if (!selectedText) return
+
+    const continuationPrompt = `${action.prompt}${selectedText}`
+    setActiveAgent('continuation')
+    addMessage('continuation', { role: 'user', content: continuationPrompt })
+    setSelectedText('')
+    setSelectionPos(null)
   }
 
   if (!currentFilePath) {
@@ -219,6 +261,28 @@ export default function MarkdownEditor() {
 
       {/* Content */}
       <div className="editor-content">
+        {/* Inline AI action bar */}
+        {selectedText && selectionPos && !isPreviewMode && (
+          <div
+            className="editor-inline-actions"
+            style={{
+              top: selectionPos.top,
+              left: selectionPos.left,
+            }}
+          >
+            <span className="editor-inline-actions-label">选中 {selectedText.length} 字</span>
+            {INLINE_ACTIONS.map((action) => (
+              <button
+                key={action.id}
+                className="editor-inline-action-btn"
+                onClick={() => handleInlineAction(action)}
+                title={action.label}
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        )}
         {isPreviewMode ? (
           <div
             className="editor-preview"
