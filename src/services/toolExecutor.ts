@@ -165,10 +165,11 @@ function updateFile(path: string, content: string, fileType?: string): void {
     console.warn('Failed to persist file content:', e)
   }
 
-  // 如果当前编辑器中打开的就是这个文件，刷新编辑器显示内容
-  // 否则 AI 执行 write_current_draft 后用户看不到变化
-  if (store.currentFilePath === path) {
-    store.openFile(path, content)
+  // 如果当前编辑器中打开的就是这个文件，强制刷新编辑器内容
+  // 使用 setState 直接设置 editorContent，绕过 openFile 的 localStorage 读取
+  const currentState = useEditorStore.getState()
+  if (currentState.currentFilePath === path) {
+    useEditorStore.setState({ editorContent: content, isDirty: false })
   }
 }
 
@@ -219,9 +220,10 @@ function readCurrentDraft(): string {
 }
 
 function writeCurrentDraft(content: string): string {
-  const extracted = extractMainText(content, true)
-  if (extracted === null) {
-    return '❌ 写入失败：未找到 <Main text> 标签。请将小说正文包裹在 <Main text> 和 </Main text> 之间，不要直接在 content 参数中传分析报告、篇幅统计或聊天文字。'
+  // write_current_draft 使用宽松模式：没有 <Main text> 标签时直接写原内容
+  const extracted = extractMainText(content, false)
+  if (!extracted || !extracted.trim()) {
+    return '❌ 写入失败：内容为空。请提供要写入的正文内容。'
   }
   updateFile('drafts/chapter_draft.md', extracted, 'chapter_draft')
   return `✅ 草稿已写入。正文长度：${extracted.length} 字符。`
