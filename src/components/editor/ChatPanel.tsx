@@ -257,7 +257,29 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           history,
           userContent,
         )
-        const contextResult = assembleContext(budget, chapterFiles, {
+
+        // Token-budget-aware history selection: instead of hardcoded slice(-10),
+        // walk backwards from newest message, accumulating tokens until budget limit
+        const historyTokenBudget = Math.max(Math.floor(budget.availableTokens * 0.15), 2000)
+        let tokenSoFar = 0
+        const selectedHistory: typeof messages = []
+        for (let i = messages.length - 1; i >= 0; i--) {
+          const msg = messages[i]
+          const msgTokens = Math.ceil(msg.content.length * 1.2) + 50 // 50 = message overhead
+          if (tokenSoFar + msgTokens > historyTokenBudget) break
+          tokenSoFar += msgTokens
+          selectedHistory.unshift(msg)
+        }
+
+        // Recalculate budget with selected history
+        const adjustedBudget = calculateContextBudget(
+          settings.modelContextWindow || 200000,
+          settings.compressionSensitivity || 40,
+          systemPrompt.length,
+          selectedHistory,
+          userContent,
+        )
+        const contextResult = assembleContext(adjustedBudget, chapterFiles, {
           statusCard: currentFiles.find((f) => f.path === 'knowledge/status_card.md')?.content,
           activeElements: currentFiles.find((f) => f.path === 'summary/active_elements.md')?.content,
           chapterDraft: currentFiles.find((f) => f.path === 'drafts/chapter_draft.md')?.content,
@@ -283,7 +305,8 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
 
       const llmMessages: LLMMessage[] = [
         { role: 'system', content: systemPrompt + contextPrompt + memoryPrompt },
-        ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        ...(agentType === 'continuation' && currentBookId ? selectedHistory : history)
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
         { role: 'user', content: userContent },
       ]
 
