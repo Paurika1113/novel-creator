@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Novel Creator — 桌面原型</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:opsz@14..32&family=Noto+Sans+SC:wght@400;500;600;700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Inter', 'Noto Sans SC', -apple-system, sans-serif;
+    background: #0f0f1a;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    padding: 32px;
+  }
+
+  /* Window Frame */
+  .window {
+    width: 1280px;
+    height: 780px;
+    background: #f5f5f8;
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.06);
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  /* Title Bar */
+  .titlebar {
+    height: 40px;
+    background: #1a1a2e;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+  }
+  .titlebar-dots {
+    display: flex;
+    gap: 8px;
+    margin-right: 16px;
+  }
+  .titlebar-dot { width: 12px; height: 12px; border-radius: 50%; }
+  .dot-close { background: #ff5f57; }
+  .dot-min { background: #febc2e; }
+  .dot-max { background: #28c840; }
+  .titlebar-title {
+    color: rgba(255,255,255,0.5);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+  }
+  .titlebar-title span { color: rgba(255,255,255,0.7); }
+
+  /* Main Layout */
+  .main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 200px;
+    background: #1a1a2e;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    border-right: 1px solid rgba(255,255,255,0.04);
+  }
+  .sidebar-brand {
+    padding: 20px 16px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .sidebar-brand-icon {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, #7c5cfc, #5b8def);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    color: white; font-size: 14px; font-weight: 700;
+  }
+  .sidebar-brand-text {
+    color: white;
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  .sidebar-nav {
+    padding: 12px 8px;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    color: rgba(255,255,255,0.5);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    user-select: none;
+  }
+  .nav-item:hover { background: rgba(255,255,255,0.06); color: rgba(255,255,255,0.8); }
+  .nav-item.active {
+    background: rgba(124,92,252,0.15);
+    color: #7c5cfc;
+  }
+  .nav-item.active .nav-icon { color: #7c5cfc; }
+  .nav-icon { width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 16px; }
+  .nav-badge {
+    margin-left: auto;
+    background: rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.4);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .sidebar-spacer { flex: 1; }
+  .sidebar-footer {
+    padding: 8px;
+    border-top: 1px solid rgba(255,255,255,0.05);
+  }
+  .nav-item.settings { color: rgba(255,255,255,0.35); font-size: 12px; }
+
+  /* Pages */
+  .pages {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+  .page {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+    overflow-y: auto;
+  }
+  .page.active {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  /* ===== 作品库 Page ===== */
+  .page-works {
+    padding: 28px 32px;
+  }
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+  .page-header h1 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1a1a2e;
+  }
+  .page-header-actions {
+    display: flex;
+    gap: 10px;
+  }
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .btn-primary {
+    background: #7c5cfc;
+    color: white;
+  }
+  .btn-primary:hover { background: #6a48e8; }
+  .btn-secondary {
+    background: #f0f0f5;
+    color: #1a1a2e;
+  }
+  .btn-secondary:hover { background: #e5e5ee; }
+
+  .book-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+  }
+  .book-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    border: 1px solid #eaeaef;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .book-card:hover {
+    border-color: #7c5cfc;
+    box-shadow: 0 4px 20px rgba(124,92,252,0.1);
+    transform: translateY(-2px);
+  }
+  .book-cover {
+    width: 48px; height: 48px;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    margin-bottom: 14px;
+  }
+  .book-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: #1a1a2e;
+    margin-bottom: 6px;
+  }
+  .book-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #888899;
+  }
+  .book-meta .tag {
+    background: #f0f0f5;
+    padding: 2px 8px;
+    border-radius: 4px;
+  }
+  .book-meta .sep { color: #ddd; }
+  .book-progress {
+    margin-top: 12px;
+    height: 3px;
+    background: #eaeaef;
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .book-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #7c5cfc, #5b8def);
+    border-radius: 2px;
+    width: 0%;
+  }
+
+  .empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 400px;
+    color: #aaaabb;
+  }
+  .empty-state .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.5; }
+  .empty-state .text { font-size: 14px; margin-bottom: 20px; }
+
+  /* ===== 创作台 Page ===== */
+  .page-workbench {
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Top bar */
+  .workbench-topbar {
+    height: 48px;
+    background: white;
+    border-bottom: 1px solid #eaeaef;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .topbar-book {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a2e;
+  }
+  .topbar-tag {
+    font-size: 11px;
+    background: #f0f0f5;
+    padding: 2px 8px;
+    border-radius: 4px;
+    color: #666;
+  }
+  .topbar-sep { width: 1px; height: 20px; background: #eaeaef; }
+  .topbar-branch {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #7c5cfc;
+    cursor: pointer;
+    padding: 4px 10px;
+    background: rgba(124,92,252,0.08);
+    border-radius: 6px;
+  }
+  .topbar-agent {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #666;
+  }
+  .agent-select {
+    background: #f5f5f8;
+    border: 1px solid #eaeaef;
+    border-radius: 6px;
+    padding: 4px 10px;
+    font-size: 12px;
+    color: #1a1a2e;
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  /* Workbench body */
+  .workbench-body {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+
+  /* File tree */
+  .file-tree {
+    width: 240px;
+    background: #fafafc;
+    border-right: 1px solid #eaeaef;
+    padding: 12px 0;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+  .tree-section {
+    padding: 0 8px;
+    margin-bottom: 4px;
+  }
+  .tree-section-title {
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #999aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .tree-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px 6px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #444;
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+  .tree-file:hover { background: #efeff5; }
+  .tree-file.active {
+    background: rgba(124,92,252,0.08);
+    color: #7c5cfc;
+  }
+  .tree-file .icon { font-size: 14px; width: 18px; text-align: center; }
+  .tree-file .status-badge {
+    margin-left: auto;
+    font-size: 10px;
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+  .status-draft { background: #fff3cd; color: #856404; }
+  .status-done { background: #d4edda; color: #155724; }
+
+  /* Editor */
+  .editor-area {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    background: white;
+    overflow: hidden;
+  }
+  .editor-toolbar {
+    height: 40px;
+    border-bottom: 1px solid #eaeaef;
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+  .editor-toolbar .tool-btn {
+    width: 30px; height: 30px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: #666;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.1s;
+  }
+  .editor-toolbar .tool-btn:hover { background: #f0f0f5; color: #1a1a2e; }
+  .editor-toolbar .tb-sep { width: 1px; height: 18px; background: #eaeaef; margin: 0 6px; }
+  .editor-toolbar .mode-toggle {
+    margin-left: auto;
+    display: flex;
+    background: #f0f0f5;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+  .mode-toggle button {
+    padding: 4px 12px;
+    font-size: 11px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    color: #666;
+    font-family: inherit;
+  }
+  .mode-toggle button.active {
+    background: white;
+    color: #1a1a2e;
+    font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+
+  .editor-content {
+    flex: 1;
+    padding: 32px 48px;
+    overflow-y: auto;
+  }
+  .editor-content h2 {
+    font-size: 24px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 2px solid #f0f0f5;
+  }
+  .editor-content p {
+    font-size: 15px;
+    line-height: 1.8;
+    color: #333;
+    margin-bottom: 16px;
+  }
+  .editor-content .placeholder {
+    color: #bbb;
+    font-style: italic;
+  }
+
+  /* Resizable Dividers */
+  .divider {
+    width: 4px;
+    cursor: col-resize;
+    background: transparent;
+    flex-shrink: 0;
+    position: relative;
+    z-index: 10;
+    transition: background 0.15s;
+  }
+  .divider:hover,
+  .divider.active {
+    background: #7c5cfc;
+  }
+
+  /* AI Chat Panel */
+  .ai-panel {
+    width: 340px;
+    background: #fafafc;
+    border-left: 1px solid #eaeaef;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+  }
+
+
+  .ai-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .msg {
+    display: flex;
+    gap: 10px;
+    max-width: 100%;
+  }
+  .msg.user { flex-direction: row-reverse; }
+  .msg-avatar {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  .msg-avatar.ai {
+    background: linear-gradient(135deg, #7c5cfc, #5b8def);
+    color: white;
+  }
+  .msg-avatar.user {
+    background: #eaeaef;
+    color: #666;
+  }
+  .msg-bubble {
+    max-width: 80%;
+    padding: 10px 14px;
+    border-radius: 12px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .msg.ai .msg-bubble {
+    background: white;
+    color: #333;
+    border: 1px solid #eaeaef;
+    border-bottom-left-radius: 4px;
+  }
+  .msg.user .msg-bubble {
+    background: #7c5cfc;
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .msg-tool {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: #f0f0f5;
+    border-radius: 6px;
+    font-size: 11px;
+    color: #666;
+    margin-top: 6px;
+  }
+
+  .ai-input-area {
+    padding: 12px 16px;
+    border-top: 1px solid #eaeaef;
+    flex-shrink: 0;
+  }
+  .ai-input-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    background: white;
+    border: 1px solid #eaeaef;
+    border-radius: 10px;
+    padding: 8px 12px;
+  }
+  .ai-input-wrap textarea {
+    flex: 1;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: 13px;
+    resize: none;
+    line-height: 1.4;
+    min-height: 20px;
+    max-height: 80px;
+    color: #333;
+  }
+  .ai-input-wrap textarea::placeholder { color: #bbb; }
+  .ai-send-btn {
+    width: 32px; height: 32px;
+    background: #7c5cfc;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .ai-send-btn:hover { background: #6a48e8; }
+
+  /* Action Dock inside Chat Panel */
+  .ai-action-dock {
+    padding: 8px 16px 4px;
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+  }
+  .action-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 14px;
+    border-radius: 6px;
+    border: 1px solid #eaeaef;
+    background: white;
+    font-size: 12px;
+    font-weight: 500;
+    color: #444;
+    cursor: pointer;
+    transition: all 0.1s;
+    font-family: inherit;
+  }
+  .action-btn:hover { border-color: #7c5cfc; color: #7c5cfc; }
+  .action-btn.primary {
+    background: #7c5cfc;
+    color: white;
+    border-color: #7c5cfc;
+  }
+  .action-btn.primary:hover { background: #6a48e8; }
+  .action-btn .icon { font-size: 14px; }
+  /* Model selector */
+  .ai-model-selector {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 0 0;
+  }
+  .model-label {
+    font-size: 11px;
+    color: #999;
+    font-weight: 500;
+  }
+  .model-select {
+    flex: 1;
+    padding: 4px 8px;
+    border: 1px solid #eaeaef;
+    border-radius: 6px;
+    font-size: 11px;
+    font-family: inherit;
+    color: #444;
+    background: white;
+    cursor: pointer;
+    outline: none;
+  }
+
+  /* ===== 版本管理 Page ===== */
+  .page-git {
+    display: flex;
+    padding: 0;
+  }
+  .git-panel {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+  }
+  .git-left {
+    width: 200px;
+    background: #fafafc;
+    border-right: 1px solid #eaeaef;
+    padding: 16px;
+    overflow-y: auto;
+  }
+  .git-left h3 {
+    font-size: 11px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+  .branch-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #444;
+    cursor: pointer;
+    margin-bottom: 2px;
+  }
+  .branch-item:hover { background: #efeff5; }
+  .branch-item.active {
+    background: rgba(124,92,252,0.08);
+    color: #7c5cfc;
+  }
+  .branch-item .check { margin-left: auto; color: #7c5cfc; font-size: 12px; }
+  .branch-item .icon { font-size: 14px; }
+
+  .git-center {
+    flex: 1;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .git-center h3 {
+    font-size: 11px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+  .commit-item {
+    display: flex;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid #f0f0f5;
+  }
+  .commit-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    background: #ddd;
+    margin-top: 6px;
+    flex-shrink: 0;
+  }
+  .commit-item:first-child .commit-dot { background: #7c5cfc; }
+  .commit-msg { font-size: 13px; color: #333; margin-bottom: 2px; }
+  .commit-meta { font-size: 11px; color: #999; display: flex; gap: 12px; }
+
+  .git-right {
+    width: 300px;
+    background: #fafafc;
+    border-left: 1px solid #eaeaef;
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .git-right h3 {
+    font-size: 11px;
+    font-weight: 600;
+    color: #999;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 12px;
+  }
+  .diff-file {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #444;
+    margin-bottom: 4px;
+  }
+  .diff-file .diff-stat { font-size: 11px; margin-left: auto; }
+  .diff-stat .added { color: #28a745; }
+  .diff-stat .removed { color: #dc3545; }
+
+  /* ===== 设置 Modal ===== */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    width: 480px;
+    background: white;
+    border-radius: 16px;
+    padding: 28px;
+    box-shadow: 0 24px 64px rgba(0,0,0,0.2);
+  }
+  .modal h2 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 24px;
+  }
+  .form-group {
+    margin-bottom: 20px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 600;
+    color: #666;
+    margin-bottom: 6px;
+  }
+  .form-group select, .form-group input {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid #eaeaef;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: inherit;
+    color: #333;
+    background: #fafafc;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .form-group select:focus, .form-group input:focus {
+    border-color: #7c5cfc;
+  }
+  .modal-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: flex-end;
+    margin-top: 24px;
+  }
+
+  /* Empty page for analysis */
+  .page-analysis {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #bbb;
+  }
+  .page-analysis .icon { font-size: 48px; margin-bottom: 16px; opacity: 0.4; }
+  .page-analysis .text { font-size: 14px; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: #bbb; }
+</style>
+</head>
+<body>
+
+<div class="window">
+  <!-- Title Bar -->
+  <div class="titlebar">
+    <div class="titlebar-dots">
+      <div class="titlebar-dot dot-close"></div>
+      <div class="titlebar-dot dot-min"></div>
+      <div class="titlebar-dot dot-max"></div>
+    </div>
+    <div class="titlebar-title">Novel Creator · <span>星辰之痕</span></div>
+  </div>
+
+  <!-- Main -->
+  <div class="main">
+    <!-- Sidebar -->
+    <div class="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-brand-icon">N</div>
+        <div class="sidebar-brand-text">Novel Creator</div>
+      </div>
+      <div class="sidebar-nav">
+        <div class="nav-item active" data-page="works">
+          <span class="nav-icon">📚</span>
+          作品库
+        </div>
+        <div class="nav-item" data-page="workbench">
+          <span class="nav-icon">✍️</span>
+          创作台
+          <span class="nav-badge">星辰之痕</span>
+        </div>
+        <div class="nav-item" data-page="git">
+          <span class="nav-icon">🔀</span>
+          版本管理
+          <span class="nav-badge">3 分支</span>
+        </div>
+        <div class="nav-item" data-page="analysis">
+          <span class="nav-icon">🔬</span>
+          分析工坊
+          <span class="nav-badge">P1</span>
+        </div>
+        <div class="sidebar-spacer"></div>
+        <div class="sidebar-footer">
+          <div class="nav-item settings" id="settingsBtn">
+            <span class="nav-icon">⚙️</span>
+            设置
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Pages -->
+    <div class="pages">
+      <!-- ===== 作品库 ===== -->
+      <div class="page page-works active" id="page-works">
+        <div class="page-header">
+          <h1>作品库</h1>
+          <div class="page-header-actions">
+            <button class="btn btn-secondary" onclick="showToast('请选择包含 Markdown 章节文件的目录')">📂 导入作品</button>
+            <button class="btn btn-primary" onclick="showNewBookModal()">＋ 新建作品</button>
+          </div>
+        </div>
+        <div class="book-grid">
+          <div class="book-card" onclick="switchPage('workbench')">
+            <div class="book-cover" style="background:#f0e6ff">🗡️</div>
+            <div class="book-name">星辰之痕</div>
+            <div class="book-meta">
+              <span class="tag">玄幻</span>
+              <span class="sep">·</span>
+              <span>12 章</span>
+              <span class="sep">·</span>
+              <span>4.8 万字</span>
+            </div>
+            <div class="book-progress"><div class="book-progress-bar" style="width:35%"></div></div>
+          </div>
+          <div class="book-card">
+            <div class="book-cover" style="background:#ffe6e6">🌆</div>
+            <div class="book-name">都市潜龙</div>
+            <div class="book-meta">
+              <span class="tag">都市</span>
+              <span class="sep">·</span>
+              <span>8 章</span>
+              <span class="sep">·</span>
+              <span>3.2 万字</span>
+            </div>
+            <div class="book-progress"><div class="book-progress-bar" style="width:20%"></div></div>
+          </div>
+          <div class="book-card">
+            <div class="book-cover" style="background:#e6f0ff">🚀</div>
+            <div class="book-name">星际漂流者</div>
+            <div class="book-meta">
+              <span class="tag">科幻</span>
+              <span class="sep">·</span>
+              <span>5 章</span>
+              <span class="sep">·</span>
+              <span>2.1 万字</span>
+            </div>
+            <div class="book-progress"><div class="book-progress-bar" style="width:12%"></div></div>
+          </div>
+          <div class="book-card">
+            <div class="book-cover" style="background:#e6ffe6">🏯</div>
+            <div class="book-name">仙道长青</div>
+            <div class="book-meta">
+              <span class="tag">仙侠</span>
+              <span class="sep">·</span>
+              <span>导入中</span>
+            </div>
+            <div class="book-progress"><div class="book-progress-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 创作台 ===== -->
+      <div class="page page-workbench" id="page-workbench">
+        <!-- Top Bar -->
+        <div class="workbench-topbar">
+          <span class="topbar-book">星辰之痕</span>
+          <span class="topbar-tag">玄幻</span>
+          <div class="topbar-sep"></div>
+          <div class="topbar-branch">🌿 master</div>
+          <div class="topbar-sep"></div>
+          <span style="font-size:12px;color:#888;font-weight:500;">📝 12 章 · 4.8 万字</span>
+
+        </div>
+
+        <!-- Workbench Body -->
+        <div class="workbench-body">
+          <!-- File Tree -->
+          <div class="file-tree" id="fileTree">
+            <div class="tree-section">
+              <div class="tree-section-title">📖 章节</div>
+              <div class="tree-file active">
+                <span class="icon">📄</span>
+                001-序章·星辰陨落
+                <span class="status-badge status-done">✓</span>
+              </div>
+              <div class="tree-file">
+                <span class="icon">📄</span>
+                002-觉醒
+                <span class="status-badge status-done">✓</span>
+              </div>
+              <div class="tree-file">
+                <span class="icon">📄</span>
+                003-试炼之路
+                <span class="status-badge status-done">✓</span>
+              </div>
+              <div class="tree-file">
+                <span class="icon">📄</span>
+                ...
+              </div>
+            </div>
+            <div class="tree-section">
+              <div class="tree-section-title">📝 草稿</div>
+              <div class="tree-file">
+                <span class="icon">📝</span>
+                chapter_draft.md
+                <span class="status-badge status-draft">草稿</span>
+              </div>
+            </div>
+            <div class="tree-section">
+              <div class="tree-section-title">📚 知识</div>
+              <div class="tree-file"><span class="icon">🌍</span> world_model.md</div>
+              <div class="tree-file"><span class="icon">🎨</span> style_fingerprint.md</div>
+              <div class="tree-file"><span class="icon">📋</span> master_outline.md</div>
+              <div class="tree-file"><span class="icon">📋</span> chapter_outline.md</div>
+              <div class="tree-file"><span class="icon">📊</span> status_card.md</div>
+              <div class="tree-file"><span class="icon">💡</span> brainstorm.md</div>
+              <div class="tree-file"><span class="icon">⚠️</span> error_archive.md</div>
+            </div>
+          </div>
+
+          <div class="divider" id="divider1" data-dir="h"></div>
+          <!-- Editor -->
+          <div class="editor-area" id="editorArea">
+            <div class="editor-toolbar">
+              <button class="tool-btn">B</button>
+              <button class="tool-btn"><i>I</i></button>
+              <button class="tool-btn"><u>U</u></button>
+              <button class="tool-btn">H</button>
+              <div class="tb-sep"></div>
+              <button class="tool-btn">🔗</button>
+              <button class="tool-btn">📷</button>
+              <div class="tb-sep"></div>
+              <button class="tool-btn">◀</button>
+              <button class="tool-btn">▶</button>
+              <div class="mode-toggle">
+                <button class="active">编辑</button>
+                <button>预览</button>
+              </div>
+            </div>
+            <div class="editor-content">
+              <h2>序章·星辰陨落</h2>
+              <p>天元大陆，北境雪原。</p>
+              <p>寒风如刀，刮过绵延千里的冰原，卷起漫天雪沫。一道瘦小的身影在雪地中蹒跚前行，每一步都在及膝的积雪中留下深深的印记。</p>
+              <p>少年约莫十五六岁，面庞被冻得发白，但一双眼睛却亮得惊人。他怀里紧紧抱着一块拳头大小的黑色石头，石头表面隐约有暗金色的纹路流转。</p>
+              <p>"星辰石……我找到了。"少年的声音沙哑，却带着压抑不住的激动。</p>
+              <p>他叫叶辰，青云镇叶家旁支子弟。三天前，他在家族藏经阁中偶然翻到一本残破的古籍，上面记载着千年之前陨落星辰的传说——星辰石中封印着上古大能的毕生修为，得之者可破境入圣。</p>
+              <p class="placeholder">[接下来写叶辰回到家族，发现星辰石引来了各方势力的觊觎……]</p>
+            </div>
+          </div>
+
+          <div class="divider" id="divider2" data-dir="h"></div>
+          <!-- AI Chat -->
+          <div class="ai-panel" id="aiPanel">
+            <div class="ai-messages">
+              <div class="msg user">
+                <div class="msg-avatar user">你</div>
+                <div class="msg-bubble">继续写第四章，叶辰进入苍云秘境后的剧情</div>
+              </div>
+              <div class="msg ai">
+                <div class="msg-avatar ai">AI</div>
+                <div class="msg-bubble">
+                  好的，我先读取已有章节和当前大纲，了解剧情进展。
+                </div>
+              </div>
+              <div class="msg ai">
+                <div class="msg-avatar ai">AI</div>
+                <div class="msg-bubble">
+                  <div class="msg-tool">📖 读取 chapters/ 目录 · 已读 3 章</div>
+                  <div class="msg-tool">📖 读取 chapter_outline.md · 已获取第四章大纲</div>
+                  <div class="msg-tool">📖 读取 world_model.md · 已获取苍云秘境设定</div>
+                  <div style="margin-top:8px;">根据大纲，第四章「苍云秘境」的剧情我已经构思好了，现在开始写入草稿——</div>
+                </div>
+              </div>
+              <div class="msg ai">
+                <div class="msg-avatar ai">AI</div>
+                <div class="msg-bubble">
+                  <div class="msg-tool">✏️ 正在写入 chapter_draft.md … 已完成 60%</div>
+                  <div style="margin-top:8px;">
+                    叶辰踏入苍云秘境的瞬间，浓郁的灵气如潮水般涌来……秘境之中，古木参天，灵药遍地，但处处暗藏杀机。
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="ai-action-dock">
+              <button class="action-btn primary" style="padding:5px 10px;font-size:11px;"><span class="icon">✏️</span> 续写</button>
+              <button class="action-btn" style="padding:5px 10px;font-size:11px;"><span class="icon">🔍</span> 审核</button>
+              <button class="action-btn" style="padding:5px 10px;font-size:11px;"><span class="icon">🌍</span> 世界观</button>
+              <button class="action-btn" style="padding:5px 10px;font-size:11px;"><span class="icon">🎨</span> 文风</button>
+              <button class="action-btn" style="padding:5px 10px;font-size:11px;"><span class="icon">✅</span> 归档</button>
+            </div>
+            <div class="ai-input-area">
+              <div class="ai-input-wrap">
+                <textarea placeholder="输入指令，跟 AI 一起创作…" rows="1"></textarea>
+                <button class="ai-send-btn">➤</button>
+              </div>
+              <div class="ai-model-selector">
+                <span class="model-label">模型</span>
+                <select class="model-select">
+                  <option>Claude Sonnet 4</option>
+                  <option>Claude Haiku 3.5</option>
+                  <option>DeepSeek V4</option>
+                  <option selected>GPT-4o</option>
+                </select>
+              </div>
+            </div>
+          </div>
+      </div>
+
+      <!-- ===== 版本管理 ===== -->
+      <div class="page page-git" id="page-git">
+        <div class="git-panel">
+          <div class="git-left">
+            <h3>🌿 分支</h3>
+            <div class="branch-item active">
+              <span class="icon">🌿</span> master
+              <span class="check">✓</span>
+            </div>
+            <div class="branch-item">
+              <span class="icon">🌿</span> feature/叶辰身世线
+            </div>
+            <div class="branch-item">
+              <span class="icon">🌿</span> try/苍云秘境重写
+            </div>
+            <div style="margin-top:16px;">
+              <button class="btn btn-secondary" style="width:100%;padding:8px;font-size:12px;justify-content:center;">＋ 新建分支</button>
+            </div>
+          </div>
+          <div class="git-center">
+            <h3>📜 提交历史 · master</h3>
+            <div class="commit-item">
+              <div class="commit-dot"></div>
+              <div>
+                <div class="commit-msg">归档：第三章 试炼之路</div>
+                <div class="commit-meta">
+                  <span>a3f2b1c</span>
+                  <span>10 分钟前</span>
+                  <span>2 个文件变更</span>
+                </div>
+              </div>
+            </div>
+            <div class="commit-item">
+              <div class="commit-dot"></div>
+              <div>
+                <div class="commit-msg">更新：world_model.md — 添加苍云秘境设定</div>
+                <div class="commit-meta">
+                  <span>e7d8c9a</span>
+                  <span>2 小时前</span>
+                  <span>1 个文件变更</span>
+                </div>
+              </div>
+            </div>
+            <div class="commit-item">
+              <div class="commit-dot"></div>
+              <div>
+                <div class="commit-msg">更新：chapter_outline.md — 第四章大纲</div>
+                <div class="commit-meta">
+                  <span>b4c5d6e</span>
+                  <span>昨天 21:30</span>
+                  <span>1 个文件变更</span>
+                </div>
+              </div>
+            </div>
+            <div class="commit-item">
+              <div class="commit-dot"></div>
+              <div>
+                <div class="commit-msg">归档：第二章 觉醒</div>
+                <div class="commit-meta">
+                  <span>f1a2b3c</span>
+                  <span>昨天 15:20</span>
+                  <span>2 个文件变更</span>
+                </div>
+              </div>
+            </div>
+            <div class="commit-item">
+              <div class="commit-dot"></div>
+              <div>
+                <div class="commit-msg">导入：初始提交（序章 + 第 1 章）</div>
+                <div class="commit-meta">
+                  <span>9a8b7c6</span>
+                  <span>3 天前</span>
+                  <span>5 个文件变更</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="git-right">
+            <h3>📄 变更文件</h3>
+            <div class="diff-file">
+              <span>📄 chapters/003-试炼之路.md</span>
+              <span class="diff-stat"><span class="added">+124</span> <span class="removed">-12</span></span>
+            </div>
+            <div class="diff-file">
+              <span>📄 status_card.md</span>
+              <span class="diff-stat"><span class="added">+8</span> <span class="removed">-4</span></span>
+            </div>
+            <div style="margin-top:24px;">
+              <h3>⏪ 操作</h3>
+              <button class="btn btn-secondary" style="width:100%;padding:8px;font-size:12px;justify-content:center;">↩ 回退到此版本</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== 分析工坊 ===== -->
+      <div class="page page-analysis" id="page-analysis">
+        <div class="icon">🔬</div>
+        <div class="text">分析工坊 · 即将到来</div>
+        <div style="color:#ccc;font-size:12px;margin-top:8px;">番茄小说导入、文风分析、趋势捕捉</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ===== 设置 Modal ===== -->
+  <div class="modal-overlay" id="settingsModal">
+    <div class="modal">
+      <h2>⚙️ 设置</h2>
+      <div class="form-group">
+        <label>LLM Provider</label>
+        <select>
+          <option>Claude (Anthropic)</option>
+          <option selected>OpenAI 兼容</option>
+          <option>DeepSeek</option>
+          <option>自定义</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>API Key</label>
+        <input type="password" placeholder="sk-..." value="sk-ant-api03-xxxxxxxxxxxx">
+      </div>
+      <div class="form-group">
+        <label>API Base URL（可选）</label>
+        <input type="text" placeholder="https://api.openai.com/v1" value="https://api.deepseek.com/v1">
+      </div>
+      <div class="form-group">
+        <label>主题</label>
+        <select>
+          <option selected>亮色</option>
+          <option>暗色</option>
+          <option>跟随系统</option>
+        </select>
+      </div>
+      <div style="padding:12px 0;border-top:1px solid #eaeaef;margin-top:8px;">
+        <div style="font-size:12px;color:#888;">数据存储位置</div>
+        <div style="font-size:12px;color:#444;font-family:monospace;margin-top:4px;">~/novel-creator/books/星辰之痕/</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" onclick="closeSettings()">取消</button>
+        <button class="btn btn-primary" onclick="closeSettings();showToast('设置已保存')">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast -->
+  <div id="toast" style="
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #1a1a2e; color: white; padding: 10px 20px;
+    border-radius: 8px; font-size: 13px; font-weight: 500;
+    opacity: 0; transition: opacity 0.3s; pointer-events: none;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+    z-index: 200;
+  "></div>
+</div>
+
+<script>
+  // Page switching
+  function switchPage(page) {
+    document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+    document.querySelector(`.nav-item[data-page="${page}"]`).classList.add('active');
+    document.getElementById(`page-${page}`).classList.add('active');
+  }
+
+  document.querySelectorAll('.nav-item[data-page]').forEach(item => {
+    item.addEventListener('click', () => switchPage(item.dataset.page));
+  });
+
+  // Settings
+  document.getElementById('settingsBtn').addEventListener('click', () => {
+    document.getElementById('settingsModal').classList.add('open');
+  });
+  function closeSettings() {
+    document.getElementById('settingsModal').classList.remove('open');
+  }
+
+  // New book modal (simplified)
+  function showNewBookModal() {
+    showToast('新建作品功能将在 v1.0 中实现');
+  }
+
+  // Toast
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.style.opacity = '1';
+    setTimeout(() => t.style.opacity = '0', 2000);
+  }
+
+  // Click settings overlay to close
+  document.getElementById('settingsModal').addEventListener('click', (e) => {
+    if (e.target === e.currentTarget) closeSettings();
+  });
+
+  // Auto-grow textarea
+  document.querySelector('.ai-input-wrap textarea').addEventListener('input', function() {
+    this.style.height = 'auto';
+    this.style.height = Math.min(this.scrollHeight, 80) + 'px';
+  });
+
+  // Resizable columns
+  const fileTree = document.getElementById('fileTree');
+  const editorArea = document.getElementById('editorArea');
+  const aiPanel = document.getElementById('aiPanel');
+  const div1 = document.getElementById('divider1');
+  const div2 = document.getElementById('divider2');
+
+  let startX = 0, startWidth = 0, targetPanel = null, invert = false, currentDivider = null;
+
+  function initDivider(divider, panelToResize, inverse) {
+    divider.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startX = e.clientX;
+      startWidth = panelToResize.offsetWidth;
+      targetPanel = panelToResize;
+      invert = !!inverse;
+      currentDivider = divider;
+      divider.classList.add('active');
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+    });
+  }
+
+  // div1: drag changes fileTree width → editor auto-fills
+  initDivider(div1, fileTree, false);
+  // div2: drag changes aiPanel width inversely → editor auto-fills
+  initDivider(div2, aiPanel, true);
+
+  document.addEventListener('mousemove', (e) => {
+    if (!currentDivider || !targetPanel) return;
+    const dx = e.clientX - startX;
+    let newWidth = invert ? startWidth - dx : startWidth + dx;
+    if (newWidth < 180) newWidth = 180;
+    if (newWidth > 500) newWidth = 500;
+    targetPanel.style.width = newWidth + 'px';
+    targetPanel.style.flex = 'none';
+  });
+
+  document.addEventListener('mouseup', () => {
+    if (currentDivider) currentDivider.classList.remove('active');
+    currentDivider = null;
+    targetPanel = null;
+    document.body.style.cursor = '';
+    document.body.style.userSelect = '';
+  });
+</script>
+
+</body>
+</html>

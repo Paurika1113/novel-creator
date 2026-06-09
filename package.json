@@ -1,0 +1,32 @@
+{
+  "name": "novel-creator",
+  "version": "1.4.0",
+  "description": "桌面端 AI 小说创作工作台",
+  "main": "electron/main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/dev.js",
+    "dev:renderer": "npx vite",
+    "build": "node scripts/build.js",
+    "electron:build": "node scripts/build.js && electron-builder"
+  },
+  "dependencies": {
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "zustand": "^5.0.14"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.29.7",
+    "@babel/plugin-transform-react-jsx": "^7.29.7",
+    "@babel/preset-typescript": "^7.29.7",
+    "@types/node": "^25.9.1",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "electron": "^42.3.0",
+    "electron-builder": "^26.8.1",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
+    "ws": "^8.21.0"
+  }
+}
