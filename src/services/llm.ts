@@ -320,6 +320,11 @@ async function* streamClaude(
     body.system = systemMsg.content
   }
 
+  // Claude 也支持 tool definitions
+  if (request.tools && request.tools.length > 0) {
+    body.tools = request.tools
+  }
+
   // 合并外部 signal 和默认超时
   const combinedSignal = createTimeoutSignal(request.signal)
 
@@ -356,6 +361,11 @@ async function* streamClaude(
   let buffer = ''
   let malformedLineCount = 0
 
+  // Tool call accumulation for Claude
+  let currentEvent = ''
+  const toolAccum = new Map<number, { id: string; name: string; arguments: string }>()
+  let accumulatedContent = ''
+
   while (true) {
     const { done, value } = await reader.read()
     if (done) break
@@ -367,32 +377,106 @@ async function* streamClaude(
     for (const line of lines) {
       const trimmed = line.trim()
       if (!trimmed) continue
-      if (!trimmed.startsWith('event:') && !trimmed.startsWith('data:')) continue
 
-      // Claude SSE: event: content_block_delta / data: {...}
-      if (trimmed.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(trimmed.slice(6))
-          if (data.type === 'content_block_delta' && data.delta?.text) {
-            yield { type: 'delta', content: data.delta.text }
+      // Track current event type from "event:" lines
+      if (trimmed.startsWith('event: ')) {
+        currentEvent = trimmed.slice(7).trim()
+        continue
+      }
+
+      if (!trimmed.startsWith('data: ')) continue
+
+      // Claude SSE: data: {...}
+      try {
+        const data = JSON.parse(trimmed.slice(6))
+
+        // content_block_start — may be text or tool_use
+        if (data.type === 'content_block_start') {
+          const block = data.content_block
+          if (block?.type === 'tool_use') {
+            // Start accumulating a tool call
+            const idx = data.index ?? 0
+            toolAccum.set(idx, {
+              id: block.id || '',
+              name: block.name || '',
+              arguments: block.input ? JSON.stringify(block.input) : '',
+            })
           }
-          if (data.type === 'message_stop') {
-            yield { type: 'done' }
-            return
+          // If it's a text block without delta handling, capture initial text
+          if (block?.type === 'text' && block.text) {
+            accumulatedContent += block.text
+            yield { type: 'delta' as const, content: block.text }
           }
-          if (data.type === 'error') {
-            yield { type: 'error', error: data.error?.message || 'Claude 未知错误' }
-            return
+          continue
+        }
+
+        // content_block_delta — either text or input_json_delta
+        if (data.type === 'content_block_delta') {
+          const delta = data.delta
+          if (delta?.type === 'text' && delta.text) {
+            accumulatedContent += delta.text
+            yield { type: 'delta' as const, content: delta.text }
           }
-        } catch {
-          malformedLineCount++
-          if (malformedLineCount >= 5) {
-            yield { type: 'error', error: '流式数据异常：连续多条 malformed JSON，请检查网络或 API 服务状态' }
-            return
+          if (delta?.type === 'input_json_delta' && delta.partial_json) {
+            const idx = data.index ?? 0
+            if (!toolAccum.has(idx)) {
+              toolAccum.set(idx, { id: '', name: '', arguments: '' })
+            }
+            const acc = toolAccum.get(idx)!
+            acc.arguments += delta.partial_json
           }
+          continue
+        }
+
+        // message_delta — may contain stop_reason and usage info
+        if (data.type === 'message_delta') {
+          if (data.delta?.stop_reason === 'tool_use' || data.delta?.stop_reason === 'end_turn') {
+            // Will yield tools at message_stop
+          }
+          continue
+        }
+
+        // message_stop — end of stream
+        if (data.type === 'message_stop') {
+          // Yield accumulated tool calls if any
+          if (toolAccum.size > 0) {
+            const calls = Array.from(toolAccum.values()).map((tc) => {
+              let parsedArgs: Record<string, unknown> = {}
+              try {
+                parsedArgs = tc.arguments ? JSON.parse(tc.arguments) : {}
+              } catch { /* partial JSON, use empty */ }
+              return { id: tc.id, name: tc.name, arguments: parsedArgs }
+            })
+            yield { type: 'tool_call' as const, toolCalls: calls }
+          }
+          yield { type: 'done' as const }
+          return
+        }
+
+        if (data.type === 'error') {
+          yield { type: 'error' as const, error: data.error?.message || 'Claude 未知错误' }
+          return
+        }
+      } catch {
+        malformedLineCount++
+        if (malformedLineCount >= 5) {
+          yield { type: 'error', error: '流式数据异常：连续多条 malformed JSON，请检查网络或 API 服务状态' }
+          return
         }
       }
     }
+  }
+
+  // If there are accumulated tool calls at the end, yield them
+  if (toolAccum.size > 0) {
+    const calls = Array.from(toolAccum.values()).map((tc) => {
+      let parsedArgs: Record<string, unknown> = {}
+      try {
+        parsedArgs = tc.arguments ? JSON.parse(tc.arguments) : {}
+      } catch { /* partial JSON */ }
+      return { id: tc.id, name: tc.name, arguments: parsedArgs }
+    })
+    yield { type: 'tool_call' as const, toolCalls: calls }
   }
 
   yield { type: 'done' }
