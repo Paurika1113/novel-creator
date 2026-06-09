@@ -222,9 +222,10 @@ function writeCurrentDraft(content: string): string {
 }
 
 function appendToDraft(content: string): string {
-  const extracted = extractMainText(content, true)
-  if (extracted === null) {
-    return '❌ 追加失败：未找到 <Main text> 标签。请将小说正文包裹在 <Main text> 和 </Main text> 之间。'
+  // append_to_draft 使用宽松模式：没有 <Main text> 标签时直接追加原内容
+  const extracted = extractMainText(content, false)
+  if (!extracted || !extracted.trim()) {
+    return '❌ 追加失败：内容为空。请提供要追加的正文内容。'
   }
   const file = findFile((f) => f.path === 'drafts/chapter_draft.md')
   const current = file?.content || ''

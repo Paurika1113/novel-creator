@@ -65,10 +65,10 @@ export function buildMemoryContext(
  * 从 active_elements.md 中提取线程摘要
  */
 function extractThreadSummary(content: string): string | null {
-  // 尝试找到线程表部分
-  const tableMatch = content.match(/\| 线程.*\|.*\n\|[-| ]+\|[\s\S]*?(?=\n\n|\n#|$)/)
+  // 尝试找到线程表部分（兼容 LF 和 CRLF 行尾）
+  const tableMatch = content.match(/\| 线程.*\|.*\r?\n\|[-| ]+\|[\s\S]*?(?=\r?\n\r?\n|\r?\n#|$)/)
   if (tableMatch) {
-    const lines = tableMatch[0].split('\n').slice(0, 6) // 最多取 5 行 + 表头
+    const lines = tableMatch[0].split(/\r?\n/).slice(0, 6) // 最多取 5 行 + 表头
     return lines.join('\n')
   }
 

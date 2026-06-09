@@ -290,7 +290,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         contextPrompt = contextResult.contextText
           ? `\n\n## 前文参考\n${contextResult.contextText}\n\n请基于以上前文，继续创作下一章。`
           : ''
-        console.log('[ContextAssembly]', getContextReport(budget, contextResult))
+        console.log('[ContextAssembly]', getContextReport(adjustedBudget, contextResult))
       }
 
       // 记忆上下文 —— 跨会话感知，所有 Agent 都受益
