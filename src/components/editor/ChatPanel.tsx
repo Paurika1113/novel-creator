@@ -9,6 +9,7 @@ import { streamChatWithTools } from '../../services/llm'
 import { executeToolCall } from '../../services/toolExecutor'
 import { calculateContextBudget, assembleContext, getContextReport } from '../../services/contextAssembler'
 import { getAgentTools, buildSystemPrompt } from '../../services/agents'
+import { buildMemoryContext } from '../../services/memoryContext'
 import type { ChatMessage } from '../../types'
 import type { LLMMessage } from '../../services/llm'
 
@@ -268,8 +269,20 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         console.log('[ContextAssembly]', getContextReport(budget, contextResult))
       }
 
+      // 记忆上下文 —— 跨会话感知，所有 Agent 都受益
+      let memoryPrompt = ''
+      if (currentBookId && currentFiles.length > 0) {
+        const memoryCtx = buildMemoryContext(currentFiles, {
+          chapterCount: currentFiles.filter((f) => f.type === 'chapter').length,
+          wordCount: currentFiles.reduce((sum, f) => sum + f.content.length, 0),
+        })
+        if (memoryCtx) {
+          memoryPrompt = `\n\n## 当前书籍状态\n${memoryCtx}`
+        }
+      }
+
       const llmMessages: LLMMessage[] = [
-        { role: 'system', content: systemPrompt + contextPrompt },
+        { role: 'system', content: systemPrompt + contextPrompt + memoryPrompt },
         ...history.map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
         { role: 'user', content: userContent },
       ]
