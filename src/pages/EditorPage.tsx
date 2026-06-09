@@ -4,6 +4,7 @@ import { useEditorStore } from '../stores/editorStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import type { KnowledgeFile, KnowledgeFileType } from '../types'
 import { WORLD_MODEL_TEMPLATE, MASTER_OUTLINE_TEMPLATE, BRAINSTORM_TEMPLATE } from '../lib/knowledgeTemplates'
+import { clearSystemPromptCache } from '../services/agents'
 import FileTree from '../components/editor/FileTree'
 import MarkdownEditor from '../components/editor/MarkdownEditor'
 import ChatPanel from '../components/editor/ChatPanel'
@@ -143,6 +144,7 @@ export default function EditorPage() {
   useEffect(() => {
     if (currentBookId && currentBookId !== editorStore.currentBookId) {
       setCurrentBook(currentBookId)
+      clearSystemPromptCache()
     }
   }, [currentBookId])
 

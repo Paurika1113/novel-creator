@@ -239,7 +239,24 @@ function buildBookPrompt(bookTitle: string, bookType: string, mainCharacter: str
 }
 
 /**
- * 获取各 Agent 的系统提示词
+ * System Prompt 缓存
+ * 缓存 key = agentType + personaId + bookTitle
+ * 相同输入重复拼接纯属浪费 token——模型每次收到的 system prompt 完全一样
+ * 换书/换作者时缓存自动失效
+ */
+const systemPromptCache = new Map<string, { prompt: string; timestamp: number }>()
+const SYSTEM_PROMPT_CACHE_TTL = 5 * 60 * 1000 // 5 分钟 TTL，防止极端情况下的内存泄漏
+
+function buildSystemPromptCacheKey(args: {
+  agentType: string
+  persona: Persona | null
+  bookTitle?: string
+}): string {
+  return `${args.agentType}:${args.persona?.id || 'nobody'}:${args.bookTitle || 'nobook'}`
+}
+
+/**
+ * 获取各 Agent 的系统提示词（带缓存）
  */
 export function buildSystemPrompt(args: {
   agentType: string
@@ -249,6 +266,13 @@ export function buildSystemPrompt(args: {
   mainCharacter?: string
 }): string {
   const { agentType, persona, bookTitle = '', bookType = '', mainCharacter = '' } = args
+
+  // 检查缓存
+  const cacheKey = buildSystemPromptCacheKey({ agentType, persona, bookTitle })
+  const cached = systemPromptCache.get(cacheKey)
+  if (cached && Date.now() - cached.timestamp < SYSTEM_PROMPT_CACHE_TTL) {
+    return cached.prompt
+  }
 
   // 底座
   const parts: string[] = [BASE_IDENTITY_PROMPT]
@@ -273,7 +297,19 @@ export function buildSystemPrompt(args: {
 3. 当需要续写时，先读取 status_card.md 了解当前状态，再调用 read_current_draft 读取草稿
 4. 已归档章节通过 read_chapter 按需读取，不要一次读取多章`)
 
-  return parts.join('\n\n')
+  const fullPrompt = parts.join('\n\n')
+
+  // 写入缓存
+  systemPromptCache.set(cacheKey, { prompt: fullPrompt, timestamp: Date.now() })
+
+  return fullPrompt
+}
+
+/**
+ * 清空 system prompt 缓存（换书/换作者时手动调用）
+ */
+export function clearSystemPromptCache(): void {
+  systemPromptCache.clear()
 }
 
 /**
