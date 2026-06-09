@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useEditorStore } from '../../stores/editorStore'
 import { useWorkflowStore } from '../../stores/workflowStore'
 import { useChatStore } from '../../stores/chatStore'
+import { useMemoryStore } from '../../stores/memoryStore'
+import { useSettingsStore } from '../../stores/settingsStore'
+import { analyzeDraftEvents } from '../../services/eventAnalysis'
 
 const INLINE_ACTIONS = [
   { id: 'polish', label: '润色', prompt: '请润色以下文本，优化表达和语感，保持原文意思不变：\n\n' },
@@ -58,6 +61,9 @@ export default function MarkdownEditor() {
   const addMessage = useChatStore((s) => s.addMessage)
   const setActiveAgent = useChatStore((s) => s.setActiveAgent)
   const isStreaming = useChatStore((s) => s.isStreaming)
+  const settings = useSettingsStore((s) => s.settings)
+  const memoryStore = useMemoryStore()
+  const editorStore = useEditorStore()
 
   // Auto-save 30s after last change
   useEffect(() => {
@@ -77,6 +83,32 @@ export default function MarkdownEditor() {
       if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current)
     }
   }, [isDirty, saveContent])
+
+  // Fire-and-forget: on draft save, trigger lightweight event analysis
+  // This runs in background and does not block the UI
+  const prevDirtyRef = useRef(isDirty)
+  useEffect(() => {
+    const justSaved = prevDirtyRef.current === true && isDirty === false
+    prevDirtyRef.current = isDirty
+
+    if (!justSaved) return
+    const filePath = editorStore.currentFilePath
+    if (!filePath || !filePath.includes('chapter_draft') || !settings.apiKey) return
+    if (!editorStore.currentBookId) return
+
+    const content = editorStore.editorContent
+    const threads = memoryStore.threads[editorStore.currentBookId] || []
+    const currentChapterIndex = useWorkflowStore.getState().currentChapterNum || 1
+
+    // Fire and forget — don't block save
+    analyzeDraftEvents(content, currentChapterIndex, threads, settings.apiKey, settings.provider, settings.baseUrl)
+      .then((result) => {
+        if (result.newThreads && result.newThreads.length > 0) {
+          console.log('[DraftEventAnalysis] 检测到新线索:', result.newThreads)
+        }
+      })
+      .catch(() => { /* silent */ })
+  }, [isDirty])
 
   // Restore cursor after content update from toolbar buttons
   useEffect(() => {

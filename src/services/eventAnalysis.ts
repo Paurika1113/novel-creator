@@ -180,6 +180,66 @@ export function buildActiveElementsMd(
   return header + separator + rows + '\n'
 }
 
+/**
+ * 轻量级草稿事件分析 —— 在草稿保存时触发
+ * 不会阻塞保存流程，fire-and-forget 模式
+ * 检测草稿中新增的事件/线程，更新 active_elements.md
+ */
+export async function analyzeDraftEvents(
+  draftContent: string,
+  currentChapterIndex: number,
+  existingThreads: Array<{ name: string; status: string }>,
+  apiKey: string,
+  provider: string,
+  baseUrl: string,
+): Promise<{
+  newThreads: string[]
+  updatedActiveElements?: string
+}> {
+  if (!draftContent || draftContent.length < 200) {
+    return { newThreads: [] }
+  }
+
+  const existingThreadNames = existingThreads.map((t) => t.name).join('、') || '无'
+
+  const prompt = `你是一位叙事分析专家。分析以下草稿片段，提取其中新出现的故事线索或已在追踪的线索的新进展。
+
+已有故事线程：${existingThreadNames}
+
+只关注以下内容：
+- 新的悬念、伏笔、冲突
+- 已有线程的新进展
+- 新出场的重要角色
+
+## 输出格式（JSON）
+{
+  "mentionedThreads": ["已存在的线程名（如果本次提及了它们）"],
+  "newThreadHints": ["新线索的简短描述（仅当确实有新线索出现时）"]
+}
+
+## 草稿片段
+${draftContent.slice(0, 3000)}`
+
+  try {
+    const response = await chat(
+      { messages: [{ role: 'user', content: prompt }] },
+      { provider, apiKey, baseUrl },
+    )
+
+    const jsonMatch = response.match(/\{[\s\S]*\}/)
+    if (!jsonMatch) return { newThreads: [] }
+
+    const data = JSON.parse(jsonMatch[0])
+    const newThreads: string[] = data.newThreadHints || []
+
+    return {
+      newThreads,
+    }
+  } catch {
+    return { newThreads: [] }
+  }
+}
+
 function statusLabel(s: string): string {
   const map: Record<string, string> = { advancing: '推进中', dormant: '休眠中', resolved: '已回收' }
   return map[s] || s
