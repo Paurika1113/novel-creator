@@ -324,7 +324,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         },
         // 工具执行回调
         async (name, args) => executeToolCall(name, args),
-        { provider, apiKey, baseUrl }
+        { provider, apiKey, baseUrl, maxRounds: 10 }
       )
 
       // 标签提取状态机：仅提取 <Main text> 到 </Main text> 之间的内容到 cleanContent
