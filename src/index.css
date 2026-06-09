@@ -16,13 +16,32 @@
   --bg-input: #f8f8fb;
   --border: #e8e8ee;
   --border-focus: #7c5cfc;
+  --surface-hover: rgba(0, 0, 0, 0.04);
+  --selection: rgba(124, 92, 252, 0.20);
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.15);
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --font-sans: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-base: 13px;
+  --font-size-md: 14px;
+  --font-size-lg: 15px;
+  --font-size-xl: 16px;
+  --font-size-2xl: 18px;
   --transition: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   --agent-continuation: #7c5cfc;
   --agent-world: #2196F3;
@@ -37,8 +56,8 @@
 }
 
 body {
-  font-family: 'Inter', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #0f0f1a;
+  font-family: var(--font-sans);
+  background: var(--bg-sidebar);
   color: var(--text-primary);
   font-size: 13px;
   line-height: 1.5;
