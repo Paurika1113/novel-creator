@@ -39,6 +39,7 @@ export function listRegisteredTools(): string[] {
 
 /**
  * 执行一个工具调用，返回工具执行结果文本
+ * 内置 30 秒超时保护，避免 localStorage 异常卡死整个工具循环
  */
 export async function executeToolCall(
   name: string,
@@ -48,7 +49,24 @@ export async function executeToolCall(
   if (!handler) {
     return `错误：未知工具 "${name}"。可用工具：${listRegisteredTools().join('、')}`
   }
-  return handler.execute(args)
+
+  try {
+    const result = await executeWithTimeout(handler.execute(args), 30000)
+    return result
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : '未知错误'
+    return `❌ 工具 "${name}" 执行失败：${msg}`
+  }
+}
+
+/**
+ * 为 Promise 添加超时保护
+ */
+async function executeWithTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error(`执行超时 (${timeoutMs}ms)`)), timeoutMs)
+  )
+  return Promise.race([promise, timeoutPromise])
 }
 
 function getCurrentFiles(): KnowledgeFile[] {
