@@ -121,6 +121,15 @@ export default function ArchiveModal({ open, onClose, onSuccess }: ArchiveModalP
       }
       const filesWithNewChapter = [...files, newChapterFile]
       setFiles(filesWithNewChapter)
+      // Persist chapter content to localStorage so generateDefaultFiles can find it
+      if (currentBookId) {
+        try {
+          localStorage.setItem(
+            `nc:${currentBookId}:${newChapterFile.path}`,
+            newChapterFile.content
+          )
+        } catch { /* ignore storage error */ }
+      }
       advance()
 
       // Stage 4: Clearing draft

@@ -160,28 +160,12 @@ export default function EditorPage() {
         openFile(firstKnowledge.path, firstKnowledge.content)
       }
     } else {
-      // 已有文件：更新章节名称（从内容中提取标题），补充缺失的文件类型
+      // 已有文件：仅补充缺失的文件类型，不覆盖已有章节内容
       const existingPaths = new Set(files.map((f) => f.path))
       const missing = defaultFiles.filter((f) => !existingPaths.has(f.path))
 
-      // 更新已有章节文件的名称和内容
-      const updatedFiles = files.map((file) => {
-        const defaultFile = defaultFiles.find((f) => f.path === file.path)
-        if (defaultFile && file.type === 'chapter') {
-          // 对于章节文件，从内容中提取标题，同时更新内容
-          return {
-            ...file,
-            name: defaultFile.name,
-            content: defaultFile.content,
-          }
-        }
-        return file
-      })
-
       if (missing.length > 0) {
-        setFiles([...updatedFiles, ...missing])
-      } else if (updatedFiles.some((f, i) => f.name !== files[i].name || f.content !== files[i].content)) {
-        setFiles(updatedFiles)
+        setFiles([...files, ...missing])
       }
 
       // 如果有 currentFilePath 但 editorContent 为空，从 localStorage 重新加载
