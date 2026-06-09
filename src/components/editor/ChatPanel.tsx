@@ -318,6 +318,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       let cleanContent = ''   // 编辑器保存（纯内容，仅标签内）
   let chatContent = ''    // 聊天显示（不含正文，只含标签外分析和工具日志）
   let toolCallIndex = 0   // 工具调用序号，用于折叠标识
+  const executedTools: string[] = []  // 记录已执行的工具名，用于结束后强制刷新
 
   // 使用内置工具循环的流式对话 —— 整个工具调用回合由 LLM 层处理
       const stream = streamChatWithTools(
@@ -392,6 +393,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         }
         if (delta.type === 'tool_result') {
           toolExecuted = true
+          executedTools.push(delta.toolName)
           const toolId = `t${toolCallIndex++}`
           // 工具结果用特殊标记包裹，renderMessageContent 识别后渲染为可折叠区块
           chatContent += `\n\n<!--TOOL:${delta.toolName}:${toolId}:${msgId}-->\n${delta.toolResult}\n<!--TOOL_END:${toolId}-->\n\n`
@@ -414,47 +416,60 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       }
 
       // 非工具写入场景：AI 聊天输出的内容需要写入编辑器文件
-    if (!toolExecuted) {
-      const contentToSave = cleanContent || chatContent.trim()
-      if (contentToSave) {
-        if (workflow.phase === 'outline' && currentFilePath === 'knowledge/chapter_outline.md') {
-          updateContent(contentToSave)
-          saveContent()
-        } else if (workflow.phase === 'draft' && currentFilePath === 'drafts/chapter_draft.md') {
-          updateContent(contentToSave)
-          saveContent()
+      if (!toolExecuted) {
+        const contentToSave = cleanContent || chatContent.trim()
+        if (contentToSave) {
+          if (workflow.phase === 'outline' && currentFilePath === 'knowledge/chapter_outline.md') {
+            updateContent(contentToSave)
+            saveContent()
+          } else if (workflow.phase === 'draft' && currentFilePath === 'drafts/chapter_draft.md') {
+            updateContent(contentToSave)
+            saveContent()
+          }
         }
       }
-    }
 
-    // 安全兜底：即使工具已执行，若聊天流中的 <Main text> 标签内有实质正文
-    // （AI 可能在聊天中输出了正文但工具调用只传了占位文字），用流内正文覆盖草稿
-    if (toolExecuted && cleanContent && cleanContent.trim().length > 50) {
-      // 检查当前草稿是否被工具正确写入（如果草稿内容很短或是占位文字，用流内正文覆盖）
-      const draftFileState = currentFiles.find((f) => f.path === 'drafts/chapter_draft.md')
-      const draftContentState = draftFileState?.content || ''
-      // 也检查 localStorage 中的最新版本
-      let draftFromStorage = ''
-      try {
-        draftFromStorage = localStorage.getItem(`nc:${currentBookId}:drafts/chapter_draft.md`) || ''
-      } catch { /* ignore */ }
-      const latestDraft = draftFromStorage || draftContentState
-      // 如果草稿当前内容明显比流内正文短很多（可能是占位文字），用流内正文覆盖
-      if (latestDraft.trim().length < cleanContent.trim().length * 0.3) {
-        updateContent(cleanContent)
-        saveContent()
-        // 同步更新 store 的 filesByBook
-        const store = useEditorStore.getState()
-        const files = store.filesByBook[currentBookId!] || []
-        const idx = files.findIndex((f) => f.path === 'drafts/chapter_draft.md')
-        if (idx >= 0) {
-          const updated = [...files]
-          updated[idx] = { ...updated[idx], content: cleanContent, updatedAt: new Date().toISOString() }
-          store.setFiles(updated)
-          localStorage.setItem(`nc:${currentBookId!}:drafts/chapter_draft.md`, cleanContent)
+      // 工具执行后的强制刷新：如果 write_current_draft 或 append_to_draft 被调用过，
+      // 用 openFile 从 localStorage 重新加载最新内容，确保编辑器与文件同步
+      const hasDraftWrite = executedTools.some((t) =>
+        t === 'write_current_draft' || t === 'append_to_draft'
+      )
+      if (hasDraftWrite) {
+        // 从 localStorage 读取工具写入的最新内容
+        const draftContent = (() => {
+          try {
+            return localStorage.getItem(`nc:${currentBookId}:drafts/chapter_draft.md`) || ''
+          } catch { return '' }
+        })()
+        // 如果 localStorage 有内容但编辑器没显示，强制刷新
+        if (draftContent && draftContent.trim()) {
+          const editorState = useEditorStore.getState()
+          if (editorState.editorContent !== draftContent) {
+            // 直接 setState 强制更新编辑器内容
+            useEditorStore.setState({ editorContent: draftContent, isDirty: false })
+          }
+        }
+        // 如果流内的 cleanContent 比工具写入的内容更长（AI 在聊天中输出了完整正文），
+        // 且工具写入被占位文字拦截了，用 cleanContent 覆盖
+        if (cleanContent && cleanContent.trim().length > 50) {
+          const draftLen = draftContent.trim().length
+          const streamLen = cleanContent.trim().length
+          if (streamLen > draftLen * 2) {
+            // 流内正文远长于草稿 → 工具可能写了占位文字，用流内正文覆盖
+            useEditorStore.setState({ editorContent: cleanContent, isDirty: false })
+            // 同步更新 filesByBook 和 localStorage
+            const store = useEditorStore.getState()
+            const files = store.filesByBook[currentBookId!] || []
+            const idx = files.findIndex((f) => f.path === 'drafts/chapter_draft.md')
+            if (idx >= 0) {
+              const updated = [...files]
+              updated[idx] = { ...updated[idx], content: cleanContent, updatedAt: new Date().toISOString() }
+              store.setFiles(updated)
+            }
+            saveContent()
+          }
         }
       }
-    }
 
       stopStreaming()
     } catch (error) {
