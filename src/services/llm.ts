@@ -606,7 +606,7 @@ export async function* streamChatWithTools(
     maxRounds?: number
   },
 ): AsyncGenerator<LLMDelta & { toolName?: string; toolResult?: string }> {
-  const { provider, apiKey, baseUrl, maxRounds = 10 } = options || {}
+  const { provider, apiKey, baseUrl, maxRounds = 30 } = options || {}
   
   const { useSettingsStore } = await import('../stores/settingsStore')
   const settings = useSettingsStore.getState().settings
