@@ -164,6 +164,12 @@ function updateFile(path: string, content: string, fileType?: string): void {
   } catch (e) {
     console.warn('Failed to persist file content:', e)
   }
+
+  // 如果当前编辑器中打开的就是这个文件，刷新编辑器显示内容
+  // 否则 AI 执行 write_current_draft 后用户看不到变化
+  if (store.currentFilePath === path) {
+    store.openFile(path, content)
+  }
 }
 
 function readKnowledgeFile(fileName: string): string {
