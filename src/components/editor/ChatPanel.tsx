@@ -244,6 +244,8 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         mainCharacter: book?.mainCharacter,
       })
       const history = messages.slice(-10)
+      // selectedHistory 对外暴露，所有 Agent 共用（续写 Agent 动态截取，其余用默认 slice）
+      let selectedHistory: typeof messages = history
 
       // Dynamic context assembly
       let contextPrompt = ''
@@ -262,7 +264,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         // walk backwards from newest message, accumulating tokens until budget limit
         const historyTokenBudget = Math.max(Math.floor(budget.availableTokens * 0.15), 2000)
         let tokenSoFar = 0
-        const selectedHistory: typeof messages = []
+        selectedHistory = []
         for (let i = messages.length - 1; i >= 0; i--) {
           const msg = messages[i]
           const msgTokens = Math.ceil(msg.content.length * 1.2) + 50 // 50 = message overhead
