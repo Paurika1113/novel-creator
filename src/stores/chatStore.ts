@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { persist } from 'zustand/middleware'
 import type { ChatMessage, AgentType } from '../types'
 import { v4 } from '../lib/id'
 
@@ -77,12 +78,14 @@ const initialConversations: Record<AgentType, ChatMessage[]> = {
   ],
 }
 
-export const useChatStore = create<ChatStore>((set, get) => ({
-  conversations: initialConversations,
-  activeAgent: 'continuation',
-  isStreaming: false,
-  streamingMessageId: null,
-  abortController: null,
+export const useChatStore = create<ChatStore>()(
+  persist(
+    (set, get) => ({
+      conversations: initialConversations,
+      activeAgent: 'continuation',
+      isStreaming: false,
+      streamingMessageId: null,
+      abortController: null,
 
   setActiveAgent: (agent) => set({ activeAgent: agent }),
 
@@ -232,4 +235,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     const { conversations, activeAgent } = get()
     return conversations[activeAgent] || []
   },
-}))
+}),
+{
+  name: 'nc:chat-store',
+  // 只持久化对话历史和当前 Agent，流式状态不持久化
+  partialize: (state) => ({
+    conversations: state.conversations,
+    activeAgent: state.activeAgent,
+  }),
+}
+)
+)
