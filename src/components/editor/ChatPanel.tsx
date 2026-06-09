@@ -13,6 +13,9 @@ import { buildMemoryContext } from '../../services/memoryContext'
 import type { ChatMessage } from '../../types'
 import type { LLMMessage } from '../../services/llm'
 
+// ---- 工具结果折叠状态 ----
+const toolCollapseState = new Map<string, Set<string>>() // msgKey -> set of toolIds
+
 // ---- Dynamic action buttons based on selected file type ----
 interface ActionButtonDef {
   id: string
@@ -313,9 +316,10 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       ]
 
       let cleanContent = ''   // 编辑器保存（纯内容，仅标签内）
-      let chatContent = ''    // 聊天显示（不含正文，只含标签外分析和工具日志）
+  let chatContent = ''    // 聊天显示（不含正文，只含标签外分析和工具日志）
+  let toolCallIndex = 0   // 工具调用序号，用于折叠标识
 
-      // 使用内置工具循环的流式对话 —— 整个工具调用回合由 LLM 层处理
+  // 使用内置工具循环的流式对话 —— 整个工具调用回合由 LLM 层处理
       const stream = streamChatWithTools(
         {
           messages: llmMessages,
@@ -388,12 +392,17 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         }
         if (delta.type === 'tool_result') {
           toolExecuted = true
-          chatContent += `\n\n[工具: ${delta.toolName}]\n${delta.toolResult}`
+          const toolId = `t${toolCallIndex++}`
+          // 工具结果用特殊标记包裹，renderMessageContent 识别后渲染为可折叠区块
+          chatContent += `\n\n<!--TOOL:${delta.toolName}:${toolId}:${msgId}-->\n${delta.toolResult}\n<!--TOOL_END:${toolId}-->\n\n`
           updateMessageContent(agentType as any, msgId, chatContent)
         }
         if (delta.type === 'tool_loop_continue') {
-          chatContent += '\n\n---\n'
-          updateMessageContent(agentType as any, msgId, chatContent)
+          // 工具循环分隔（无工具调用时不显示多余分隔线）
+          if (toolCallIndex > 0) {
+            chatContent += '\n\n'
+            updateMessageContent(agentType as any, msgId, chatContent)
+          }
         }
       }
 
@@ -405,18 +414,47 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       }
 
       // 非工具写入场景：AI 聊天输出的内容需要写入编辑器文件
-      if (!toolExecuted) {
-        const contentToSave = cleanContent || chatContent.trim()
-        if (contentToSave) {
-          if (workflow.phase === 'outline' && currentFilePath === 'knowledge/chapter_outline.md') {
-            updateContent(contentToSave)
-            saveContent()
-          } else if (workflow.phase === 'draft' && currentFilePath === 'drafts/chapter_draft.md') {
-            updateContent(contentToSave)
-            saveContent()
-          }
+    if (!toolExecuted) {
+      const contentToSave = cleanContent || chatContent.trim()
+      if (contentToSave) {
+        if (workflow.phase === 'outline' && currentFilePath === 'knowledge/chapter_outline.md') {
+          updateContent(contentToSave)
+          saveContent()
+        } else if (workflow.phase === 'draft' && currentFilePath === 'drafts/chapter_draft.md') {
+          updateContent(contentToSave)
+          saveContent()
         }
       }
+    }
+
+    // 安全兜底：即使工具已执行，若聊天流中的 <Main text> 标签内有实质正文
+    // （AI 可能在聊天中输出了正文但工具调用只传了占位文字），用流内正文覆盖草稿
+    if (toolExecuted && cleanContent && cleanContent.trim().length > 50) {
+      // 检查当前草稿是否被工具正确写入（如果草稿内容很短或是占位文字，用流内正文覆盖）
+      const draftFileState = currentFiles.find((f) => f.path === 'drafts/chapter_draft.md')
+      const draftContentState = draftFileState?.content || ''
+      // 也检查 localStorage 中的最新版本
+      let draftFromStorage = ''
+      try {
+        draftFromStorage = localStorage.getItem(`nc:${currentBookId}:drafts/chapter_draft.md`) || ''
+      } catch { /* ignore */ }
+      const latestDraft = draftFromStorage || draftContentState
+      // 如果草稿当前内容明显比流内正文短很多（可能是占位文字），用流内正文覆盖
+      if (latestDraft.trim().length < cleanContent.trim().length * 0.3) {
+        updateContent(cleanContent)
+        saveContent()
+        // 同步更新 store 的 filesByBook
+        const store = useEditorStore.getState()
+        const files = store.filesByBook[currentBookId!] || []
+        const idx = files.findIndex((f) => f.path === 'drafts/chapter_draft.md')
+        if (idx >= 0) {
+          const updated = [...files]
+          updated[idx] = { ...updated[idx], content: cleanContent, updatedAt: new Date().toISOString() }
+          store.setFiles(updated)
+          localStorage.setItem(`nc:${currentBookId!}:drafts/chapter_draft.md`, cleanContent)
+        }
+      }
+    }
 
       stopStreaming()
     } catch (error) {
@@ -539,9 +577,28 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     }
   }
 
-  // ---- Render message content ----
-  function renderMessageContent(content: string) {
-    const lines = content.split('\n')
+  // ---- 切换工具折叠状态 ----
+  const toggleTool = useCallback((msgKey: string, toolId: string) => {
+    if (!toolCollapseState.has(msgKey)) {
+      toolCollapseState.set(msgKey, new Set())
+    }
+    const set = toolCollapseState.get(msgKey)!
+    if (set.has(toolId)) {
+      set.delete(toolId)
+    } else {
+      set.add(toolId)
+    }
+    // 触发重渲染
+    setExpandedTools((prev) => {
+      const next = new Map(prev)
+      next.set(msgKey, new Set(set))
+      return next
+    })
+  }, [])
+
+  // ---- 渲染纯文本行 ----
+  function renderTextLines(text: string) {
+    const lines = text.split('\n')
     return lines.map((line, i) => {
       if (line.startsWith('# ')) {
         return <h3 key={i} className="chat-message-heading">{line.slice(2)}</h3>
@@ -561,6 +618,68 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       return <p key={i} className="chat-message-paragraph">{line}</p>
     })
   }
+
+  // ---- 渲染包含可折叠工具结果的消息内容 ----
+  function renderMessageContent(content: string, msgIndex: number) {
+    const msgKey = `${msgIndex}`
+    const expandedSet = toolCollapseState.get(msgKey) || new Set<string>()
+    const toolRegex = /<!--TOOL:([^:]+):([^:]+):([^-]+)-->\n([\s\S]*?)\n<!--TOOL_END:\2-->/g
+
+    const segments: Array<{ type: 'text' | 'tool'; content?: string; toolName?: string; toolId?: string }> = []
+    let lastIdx = 0
+    let match: RegExpExecArray | null
+    while ((match = toolRegex.exec(content)) !== null) {
+      if (match.index > lastIdx) {
+        segments.push({ type: 'text', content: content.slice(lastIdx, match.index) })
+      }
+      segments.push({ type: 'tool', content: match[4], toolName: match[1], toolId: match[2] })
+      lastIdx = match.index + match[0].length
+    }
+    if (lastIdx < content.length) {
+      segments.push({ type: 'text', content: content.slice(lastIdx) })
+    }
+
+    if (segments.length === 0) {
+      return renderTextLines(content)
+    }
+
+    return segments.map((seg, i) => {
+      if (seg.type === 'tool') {
+        const isExpanded = expandedSet.has(seg.toolId!)
+        const toolName = seg.toolName!
+        const toolContent = seg.content || ''
+        // 截取首行作为预览（折叠时显示）
+        const firstLine = toolContent.split('\n')[0]?.trim().slice(0, 80) || ''
+        return (
+          <div key={i} className="chat-tool-result">
+            <div
+              className="chat-tool-result-header"
+              onClick={() => toggleTool(msgKey, seg.toolId!)}
+              title="点击展开/折叠"
+            >
+              <span className="chat-tool-result-caret">{isExpanded ? '▼' : '▶'}</span>
+              <span className="chat-tool-result-icon">🔧</span>
+              <span className="chat-tool-result-name">{toolName}</span>
+              {!isExpanded && firstLine && (
+                <span className="chat-tool-result-preview">{firstLine}</span>
+              )}
+            </div>
+            {isExpanded && (
+              <div className="chat-tool-result-body">
+                {renderTextLines(toolContent)}
+              </div>
+            )}
+          </div>
+        )
+      }
+      // 空文本跳过
+      if (!seg.content?.trim()) return null
+      return <div key={i}>{renderTextLines(seg.content!)}</div>
+    })
+  }
+
+  // 触发折叠状态重渲染的 dummy state
+  const [, setExpandedTools] = useState<Map<string, Set<string>>>(new Map())
 
   const activeBook = currentBookId ? books.find((b) => b.id === currentBookId) : null
 
@@ -596,7 +715,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
               {msg.role === 'user' ? '👤' : '🤖'}
             </div>
             <div className="chat-message-content">
-              {renderMessageContent(msg.content)}
+              {renderMessageContent(msg.content, index)}
             </div>
           </div>
         ))}

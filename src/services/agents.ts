@@ -400,7 +400,13 @@ function getAgentSpecificPrompt(agentType: string): string {
 - 保持与前文一致的视角和叙事手法
 - 生成完草稿后，调用 write_current_draft 将**完整正文（含 <Main text> 标签）**写入 chapter_draft.md
 - 修改已有草稿后，同样必须调用 write_current_draft 写入**完整修改后**的正文（包含 <Main text> 标签），不要只输出修改片段
-- **禁止**在聊天中长篇描述草稿内容、列出篇幅统计、总结亮点——直接调用 write_current_draft 写入正文即可`
+- **禁止**在聊天中长篇描述草稿内容、列出篇幅统计、总结亮点——直接调用 write_current_draft 写入正文即可
+
+### ⚠️ write_current_draft 调用铁律（违反将导致内容丢失）
+- content 参数中 <Main text> 标签内必须包含**100%完整的小说正文**，一个字都不能少
+- **绝对禁止**使用占位文字如"如上所示"、"内容同上"、"正文已在上方输出"、"请参见上文"等
+- 聊天中可以说一句简短提示（如"正在重写草稿…"），但**正文的全部内容必须原样放入标签内**
+- 标签内不是"引用"或"参见"聊天内容，而是**把正文完整复制到标签里**`
 
     case 'review':
       return `## 你的角色：审核 Agent

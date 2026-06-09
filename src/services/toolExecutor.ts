@@ -219,11 +219,31 @@ function readCurrentDraft(): string {
   return content || '（草稿为空）'
 }
 
+/**
+ * 检查提取后的内容是否为占位文字（如 AI 输出 "正文内容如上所示" 等）
+ */
+function isPlaceholderText(text: string): boolean {
+  const trimmed = text.trim()
+  // 太短 → 明显不是正文
+  if (trimmed.length < 30) return true
+  // 匹配常见占位模式
+  const placeholderPatterns = [
+    /^[（(]?\s*(正文|内容|草稿|以上|如上|同上|参见|请见|详见|参考)[\s\S]{0,20}[）)]?\s*$/,
+    /^(正文内容如上|内容如上所示|正文如上|请参阅上文|参见上文|已在上方输出|已在聊天中输出)/,
+    /^[（(][^)）]{0,15}[）)]\s*$/,
+  ]
+  return placeholderPatterns.some((p) => p.test(trimmed))
+}
+
 function writeCurrentDraft(content: string): string {
   // write_current_draft 使用宽松模式：没有 <Main text> 标签时直接写原内容
   const extracted = extractMainText(content, false)
   if (!extracted || !extracted.trim()) {
     return '❌ 写入失败：内容为空。请提供要写入的正文内容。'
+  }
+  // 检测占位文字
+  if (isPlaceholderText(extracted)) {
+    return `❌ 写入失败：检测到占位文字（"${extracted.slice(0, 50)}..."），而非完整正文。请在 <Main text> 标签内放入**完整的小说正文**，不要使用"如上所示"等占位短语。`
   }
   updateFile('drafts/chapter_draft.md', extracted, 'chapter_draft')
   return `✅ 草稿已写入。正文长度：${extracted.length} 字符。`
