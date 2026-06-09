@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useBookStore } from '../stores/bookStore'
 import { useEditorStore } from '../stores/editorStore'
-import { useMemoryStore } from '../stores/memoryStore'
 import { useSettingsStore } from '../stores/settingsStore'
 import type { KnowledgeFile, KnowledgeFileType } from '../types'
 import { WORLD_MODEL_TEMPLATE, MASTER_OUTLINE_TEMPLATE, BRAINSTORM_TEMPLATE } from '../lib/knowledgeTemplates'
@@ -119,10 +118,24 @@ export default function EditorPage() {
   const [rightWidth, setRightWidth] = useState(storedRight ? Number(storedRight) : 340)
   const [isDraggingLeft, setIsDraggingLeft] = useState(false)
   const [isDraggingRight, setIsDraggingRight] = useState(false)
-  const { memoryUsagePercent, getCompressionStatus } = useMemoryStore()
   const { settings } = useSettingsStore()
 
   const [showArchiveModal, setShowArchiveModal] = useState(false)
+
+  // ---- 从实际文件计算章节统计（响应式：files 随 book 切换自动更新） ----
+  const actualChapters = files.filter((f) => f.type === 'chapter')
+  const chapterCount = actualChapters.length
+  const wordCount = files.reduce((sum, f) => sum + f.content.length, 0)
+
+  // ---- 估算记忆使用率 ----
+  // 基于草稿正文 + 最近章节内容量，按 200K token 上下文窗口估算
+  const draftContent = files.find((f) => f.type === 'chapter_draft')?.content || ''
+  const recentChapters = actualChapters.slice(-3)
+  const recentContent = recentChapters.reduce((sum, f) => sum + f.content.length, 0)
+  const estimatedTokens = (draftContent.length + recentContent.length + 5000) * 1.2  // 含 system prompt
+  const CONTEXT_WINDOW = 200000
+  const computedMemoryPercent = Math.min(Math.round((estimatedTokens / CONTEXT_WINDOW) * 100), 99)
+  const memoryUsagePercent = computedMemoryPercent
 
   // 同步 bookStore 的 currentBookId 到 editorStore
   // 仅在 bookStore 有有效 currentBookId 且与 editorStore 不同时同步
@@ -245,7 +258,7 @@ export default function EditorPage() {
         <span className="editor-topbar-meta">🌿 {book.currentBranch}</span>
         <span className="editor-topbar-divider">|</span>
         <span className="editor-topbar-meta">
-          📝 {book.chapterCount}章 · {(book.wordCount / 10000).toFixed(1)}万字
+          📝 {chapterCount}章 · {(wordCount / 10000).toFixed(1)}万字
         </span>
         <span className="editor-topbar-divider">|</span>
         <span
