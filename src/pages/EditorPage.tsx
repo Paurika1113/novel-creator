@@ -248,8 +248,19 @@ export default function EditorPage() {
           📝 {book.chapterCount}章 · {(book.wordCount / 10000).toFixed(1)}万字
         </span>
         <span className="editor-topbar-divider">|</span>
-        <span className={`editor-topbar-meta editor-topbar-memory ${getMemoryClass(memoryUsagePercent)}`}>
-          🧠 记忆使用 {Math.round(memoryUsagePercent)}%
+        <span
+          className={`editor-topbar-memory-indicator ${getMemoryClass(memoryUsagePercent)}`}
+          title={`上下文使用率: ${Math.round(memoryUsagePercent)}% | ${getMemoryLabel(memoryUsagePercent)}`}
+        >
+          <span className="editor-topbar-memory-bar">
+            <span
+              className="editor-topbar-memory-fill"
+              style={{ width: `${Math.min(memoryUsagePercent, 100)}%` }}
+            />
+          </span>
+          <span className="editor-topbar-memory-text">
+            {Math.round(memoryUsagePercent)}%
+          </span>
         </span>
         <div style={{ flex: 1 }} />
         <span className="editor-topbar-meta">
@@ -300,4 +311,11 @@ function getMemoryClass(percent: number): string {
   if (percent >= 70) return 'memory-warn'
   if (percent >= 40) return 'memory-mild'
   return ''
+}
+
+function getMemoryLabel(percent: number): string {
+  if (percent >= 85) return '深度压缩 - 上下文空间紧张'
+  if (percent >= 70) return '中度压缩 - 建议关注上下文使用'
+  if (percent >= 40) return '轻度压缩 - 正常使用中'
+  return '上下文充足'
 }

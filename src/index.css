@@ -1501,24 +1501,54 @@ body {
   min-width: 180px;
 }
 
-/* Topbar memory usage */
-.editor-topbar-memory {
+/* Topbar memory usage — visual indicator bar */
+.editor-topbar-memory-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.editor-topbar-memory-bar {
+  width: 48px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--border);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.editor-topbar-memory-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--primary);
+  transition: width 0.3s ease, background 0.3s ease;
+}
+.editor-topbar-memory-text {
   font-size: 11px;
-  transition: color 0.3s;
-}
-.editor-topbar-memory.memory-mild {
-  color: var(--warning);
-}
-.editor-topbar-memory.memory-warn {
-  color: #e67e22;
-}
-.editor-topbar-memory.memory-danger {
-  color: var(--danger);
-  animation: memoryBlink 1.5s ease infinite;
+  font-weight: 600;
+  color: var(--text-secondary);
+  min-width: 30px;
 }
 
-@keyframes memoryBlink {
-  50% { opacity: 0.5; }
+/* Memory warning level colors */
+.editor-topbar-memory-indicator.memory-mild .editor-topbar-memory-fill {
+  background: var(--warning);
+}
+.editor-topbar-memory-indicator.memory-mild .editor-topbar-memory-text {
+  color: var(--warning);
+}
+.editor-topbar-memory-indicator.memory-warn .editor-topbar-memory-fill {
+  background: #e67e22;
+}
+.editor-topbar-memory-indicator.memory-warn .editor-topbar-memory-text {
+  color: #e67e22;
+}
+.editor-topbar-memory-indicator.memory-danger .editor-topbar-memory-fill {
+  background: var(--danger);
+}
+.editor-topbar-memory-indicator.memory-danger .editor-topbar-memory-text {
+  color: var(--danger);
+  font-weight: 700;
 }
 
 /* ================================================
