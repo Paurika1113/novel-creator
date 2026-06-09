@@ -113,8 +113,10 @@ export default function EditorPage() {
 
   const book = currentBookId ? books.find((b) => b.id === currentBookId) : null
 
-  const [leftWidth, setLeftWidth] = useState(240)
-  const [rightWidth, setRightWidth] = useState(340)
+  const storedLeft = localStorage.getItem('nc:panelLeftWidth')
+  const storedRight = localStorage.getItem('nc:panelRightWidth')
+  const [leftWidth, setLeftWidth] = useState(storedLeft ? Number(storedLeft) : 240)
+  const [rightWidth, setRightWidth] = useState(storedRight ? Number(storedRight) : 340)
   const [isDraggingLeft, setIsDraggingLeft] = useState(false)
   const [isDraggingRight, setIsDraggingRight] = useState(false)
   const { memoryUsagePercent, getCompressionStatus } = useMemoryStore()
@@ -194,26 +196,42 @@ export default function EditorPage() {
     )
   }
 
-  // Drag handlers
+  // Drag handlers with persistence
   function handleMouseMove(e: React.MouseEvent) {
     if (isDraggingLeft) {
-      const newWidth = Math.min(400, Math.max(160, e.clientX))
+      const newWidth = Math.min(420, Math.max(180, e.clientX))
       setLeftWidth(newWidth)
     }
     if (isDraggingRight) {
-      const newWidth = Math.min(500, Math.max(180, window.innerWidth - e.clientX))
+      const newWidth = Math.min(500, Math.max(200, window.innerWidth - e.clientX))
       setRightWidth(newWidth)
     }
   }
 
   function handleMouseUp() {
-    if (isDraggingLeft) setIsDraggingLeft(false)
-    if (isDraggingRight) setIsDraggingRight(false)
+    if (isDraggingLeft) {
+      setIsDraggingLeft(false)
+      localStorage.setItem('nc:panelLeftWidth', String(leftWidth))
+    }
+    if (isDraggingRight) {
+      setIsDraggingRight(false)
+      localStorage.setItem('nc:panelRightWidth', String(rightWidth))
+    }
+  }
+
+  function handleLeftDragStart(e: React.MouseEvent) {
+    e.preventDefault()
+    setIsDraggingLeft(true)
+  }
+
+  function handleRightDragStart(e: React.MouseEvent) {
+    e.preventDefault()
+    setIsDraggingRight(true)
   }
 
   return (
     <div
-      className="editor-page"
+      className={`editor-page${isDraggingLeft || isDraggingRight ? ' is-dragging' : ''}`}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
@@ -247,8 +265,11 @@ export default function EditorPage() {
         </div>
         <div
           className="editor-drag-handle"
-          onMouseDown={() => setIsDraggingLeft(true)}
-        />
+          onMouseDown={handleLeftDragStart}
+          title="拖拽调整左侧面板宽度"
+        >
+          <div className="editor-drag-handle-line" />
+        </div>
 
         {/* Middle: Editor */}
         <div className="editor-panel-center">
@@ -258,8 +279,11 @@ export default function EditorPage() {
         {/* Right: Chat */}
         <div
           className="editor-drag-handle"
-          onMouseDown={() => setIsDraggingRight(true)}
-        />
+          onMouseDown={handleRightDragStart}
+          title="拖拽调整右侧面板宽度"
+        >
+          <div className="editor-drag-handle-line" />
+        </div>
         <div className="editor-panel-right" style={{ width: rightWidth }}>
           <ChatPanel onArchive={() => setShowArchiveModal(true)} />
         </div>
