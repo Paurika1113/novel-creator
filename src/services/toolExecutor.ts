@@ -1,10 +1,41 @@
 /**
  * 工具执行器 —— 在本地执行 AI 发出的工具调用
+ * 
+ * 工具通过注册表模式管理：registerTool(name, handler) 注册，
+ * executeToolCall(name, args) 从注册表中查找并执行。
+ * 新增工具只需一次注册调用，无需修改路由逻辑。
  */
 
 import { useEditorStore } from '../stores/editorStore'
 import { useBookStore } from '../stores/bookStore'
 import type { KnowledgeFile } from '../types'
+
+// ========================================
+// 工具注册表
+// ========================================
+
+interface ToolHandler {
+  execute: (args: Record<string, unknown>) => Promise<string> | string
+  description?: string
+}
+
+const toolRegistry = new Map<string, ToolHandler>()
+
+/**
+ * 注册一个新工具到执行器
+ * @param name 工具名（与 agents.ts 中的 ToolDefinition.function.name 一致）
+ * @param handler 工具处理器（含 execute 方法）
+ */
+export function registerTool(name: string, handler: ToolHandler): void {
+  toolRegistry.set(name, handler)
+}
+
+/**
+ * 列出所有已注册的工具名
+ */
+export function listRegisteredTools(): string[] {
+  return Array.from(toolRegistry.keys())
+}
 
 /**
  * 执行一个工具调用，返回工具执行结果文本
@@ -13,24 +44,11 @@ export async function executeToolCall(
   name: string,
   args: Record<string, unknown>,
 ): Promise<string> {
-  switch (name) {
-    case 'read_knowledge_file':
-      return readKnowledgeFile(args.fileName as string)
-    case 'read_current_draft':
-      return readCurrentDraft()
-    case 'write_current_draft':
-      return writeCurrentDraft(args.content as string)
-    case 'append_to_draft':
-      return appendToDraft(args.content as string)
-    case 'list_chapters':
-      return listChapters()
-    case 'read_chapter':
-      return readChapter(Number(args.index))
-    case 'write_knowledge_file':
-      return writeKnowledgeFile(args.fileName as string, args.content as string)
-    default:
-      return `错误：未知工具 "${name}"`
+  const handler = toolRegistry.get(name)
+  if (!handler) {
+    return `错误：未知工具 "${name}"。可用工具：${listRegisteredTools().join('、')}`
   }
+  return handler.execute(args)
 }
 
 function getCurrentFiles(): KnowledgeFile[] {
@@ -230,3 +248,42 @@ function writeKnowledgeFile(fileName: string, content: string): string {
   }
   return `✅ 知识文件 "${fileName}" 已更新。正文长度：${extracted.length} 字符。`
 }
+
+// ========================================
+// 工具注册（模块加载时自动注册）
+// ========================================
+
+registerTool('read_knowledge_file', {
+  execute: (args) => readKnowledgeFile(args.fileName as string),
+  description: '读取规范性知识文件',
+})
+
+registerTool('read_current_draft', {
+  execute: () => readCurrentDraft(),
+  description: '读取当前草稿',
+})
+
+registerTool('write_current_draft', {
+  execute: (args) => writeCurrentDraft(args.content as string),
+  description: '写入当前草稿',
+})
+
+registerTool('append_to_draft', {
+  execute: (args) => appendToDraft(args.content as string),
+  description: '追加到草稿末尾',
+})
+
+registerTool('list_chapters', {
+  execute: () => listChapters(),
+  description: '列出已归档章节',
+})
+
+registerTool('read_chapter', {
+  execute: (args) => readChapter(Number(args.index)),
+  description: '读取某章正文',
+})
+
+registerTool('write_knowledge_file', {
+  execute: (args) => writeKnowledgeFile(args.fileName as string, args.content as string),
+  description: '写入知识文件',
+})
