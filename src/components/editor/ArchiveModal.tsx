@@ -294,7 +294,7 @@ export default function ArchiveModal({ open, onClose, onSuccess }: ArchiveModalP
         let compressedFiles = [...filesAfterThreads]
         const timelineSummaries: ChapterSummary[] = []
 
-        // 并行生成 T1 摘要，限制并发数为 3，避免阻塞和过多 API 消耗
+        // 并行生成 T1 摘要，限制并发数为 3，避免阻塞和过多 API 调用
         const CONCURRENCY_LIMIT = 3
         for (const item of plan) {
           if (item.level === 'T1') {
@@ -302,6 +302,28 @@ export default function ArchiveModal({ open, onClose, onSuccess }: ArchiveModalP
             for (let idx = item.startChapter; idx <= Math.min(item.endChapter, chapterFiles.length); idx++) {
               const cf = chapterFiles[idx - 1]
               if (cf && cf.content) {
+                // 指纹缓存：内容未变时跳过 LLM 调用
+                const fingerprint = simpleHash(cf.content)
+                const cachedFingerprint = currentBookId
+                  ? localStorage.getItem(`nc:${currentBookId}:fingerprint:ch${idx}`)
+                  : null
+
+                if (cachedFingerprint === fingerprint) {
+                  // 内容未变，从已有 timeline 中提取摘要
+                  const existingSummaryText = extractExistingSummary(
+                    compressedFiles.find((f) => f.path === 'summary/chapter_timeline.md')?.content,
+                    idx
+                  )
+                  if (existingSummaryText) {
+                    timelineSummaries.push({
+                      chapterIndex: idx,
+                      level: 'T1',
+                      summary: existingSummaryText,
+                    })
+                  }
+                  continue
+                }
+
                 tasks.push(async () => {
                   const summary = await generateT1Summary(idx, cf.name, cf.content)
                   timelineSummaries.push({
@@ -309,6 +331,12 @@ export default function ArchiveModal({ open, onClose, onSuccess }: ArchiveModalP
                     level: 'T1',
                     summary,
                   })
+                  // 写入指纹缓存
+                  if (currentBookId) {
+                    try {
+                      localStorage.setItem(`nc:${currentBookId}:fingerprint:ch${idx}`, fingerprint)
+                    } catch { /* ignore */ }
+                  }
                 })
               }
             }
@@ -476,4 +504,38 @@ export default function ArchiveModal({ open, onClose, onSuccess }: ArchiveModalP
       </div>
     </Modal>
   )
+}
+
+/**
+ * Simple string hash for content fingerprinting (browser-compatible)
+ */
+function simpleHash(str: string): string {
+  let hash = 0
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash & hash
+  }
+  return 'h' + Math.abs(hash).toString(36)
+}
+
+/**
+ * Extract existing summary for a chapter index from timeline markdown content
+ */
+function extractExistingSummary(timelineContent: string | undefined, chapterIndex: number): string | null {
+  if (!timelineContent) return null
+  const lines = timelineContent.split('\n')
+  let inTarget = false
+  const result: string[] = []
+  for (const line of lines) {
+    if (line.startsWith('###') && line.includes(`第 ${chapterIndex} 章`) || line.includes(`#${chapterIndex}`)) {
+      inTarget = true
+      continue
+    }
+    if (inTarget) {
+      if (line.startsWith('###') || line.startsWith('---')) break
+      result.push(line)
+    }
+  }
+  return result.length > 0 ? result.join('\n').trim() : null
 }
