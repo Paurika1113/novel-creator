@@ -1,223 +1,147 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { ChatMessage, AgentType } from '../types'
-import { v4 } from '../lib/id'
+import type { ChatMessage } from '../types'
 
 interface ChatStore {
-  // 各 Agent 的对话历史
-  conversations: Record<AgentType, ChatMessage[]>
-  activeAgent: AgentType
+  // 统一对话历史（不再按 Agent 分组）
+  conversation: ChatMessage[]
   isStreaming: boolean
-  streamingMessageId: string | null // 当前流式消息的 ID
-  abortController: AbortController | null // 用于取消请求
+  streamingMessageId: string | null
+  abortController: AbortController | null
 
-  // Agent 切换
-  setActiveAgent: (agent: AgentType) => void
-
-  // 消息操作
-  addMessage: (agent: AgentType, message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
-  appendToLastMessage: (agent: AgentType, content: string) => void
-  updateMessageStatus: (agent: AgentType, messageId: string, status: ChatMessage['status']) => void
-  clearConversation: (agent: AgentType) => void
-  updateMessageContent: (agent: AgentType, messageId: string, content: string) => void
+  // 消息操作（不再需要 agent 参数）
+  addMessage: (message: Omit<ChatMessage, 'id' | 'timestamp'>) => void
+  appendToLastMessage: (content: string) => void
+  updateMessageContent: (messageId: string, content: string) => void
+  updateMessageStatus: (messageId: string, status: ChatMessage['status']) => void
+  clearConversation: () => void
 
   // 流式输出
   setStreaming: (streaming: boolean) => void
-  startStreaming: () => string // 创建新消息，返回 messageId
+  startStreaming: () => string
   stopStreaming: () => void
   cancelStreaming: () => void
 
   // 工具调用
-  updateMessageToolCalls: (agent: AgentType, messageId: string, toolCalls: ChatMessage['toolCalls']) => void
-  updateToolResult: (agent: AgentType, messageId: string, toolCallId: string, result: string, status: 'success' | 'error') => void
+  updateMessageToolCalls: (messageId: string, toolCalls: ChatMessage['toolCalls']) => void
+  updateToolResult: (messageId: string, toolCallId: string, result: string, status: 'success' | 'error') => void
 
-  // 获取当前 agent 的对话
-  getActiveConversation: () => ChatMessage[]
+  // 获取对话
+  getConversation: () => ChatMessage[]
 }
 
-const initialConversations: Record<AgentType, ChatMessage[]> = {
-  continuation: [
-    {
-      id: 'system-init',
-      role: 'system',
-      content: '我是续写 Agent，我可以根据大纲和前文内容为你续写小说章节。请告诉我你要写什么。',
-      agentType: 'continuation',
-      timestamp: new Date().toISOString(),
-      status: 'sent',
-    },
-  ],
-  world: [
-    {
-      id: 'system-init-w',
-      role: 'system',
-      content: '我是世界观 Agent，我可以帮你提取和梳理小说中的世界观设定。',
-      agentType: 'world',
-      timestamp: new Date().toISOString(),
-      status: 'sent',
-    },
-  ],
-  review: [
-    {
-      id: 'system-init-r',
-      role: 'system',
-      content: '我是审核 Agent，我可以从世界观一致性、大纲匹配度、前文连续性、文风一致性和文本质量五个维度审阅你的草稿。',
-      agentType: 'review',
-      timestamp: new Date().toISOString(),
-      status: 'sent',
-    },
-  ],
-  style: [
-    {
-      id: 'system-init-s',
-      role: 'system',
-      content: '我是文风 Agent，我可以分析你的文风特征并与已绑定的作者身份进行比对。',
-      agentType: 'style',
-      timestamp: new Date().toISOString(),
-      status: 'sent',
-    },
-  ],
-}
+const initialConversation: ChatMessage[] = [
+  {
+    id: 'system-init',
+    role: 'system',
+    content: '我是你的写作助手，可以帮助你进行大纲规划、章节续写、草稿审核、风格润色和世界观构建。直接告诉我你需要什么即可。',
+    timestamp: new Date().toISOString(),
+    status: 'sent',
+  },
+]
 
 export const useChatStore = create<ChatStore>()(
   persist(
     (set, get) => ({
-      conversations: initialConversations,
-      activeAgent: 'continuation',
+      conversation: initialConversation,
       isStreaming: false,
       streamingMessageId: null,
       abortController: null,
 
-  setActiveAgent: (agent) => set({ activeAgent: agent }),
-
-  addMessage: (agent, message) => {
-    const newMsg: ChatMessage = {
-      ...message,
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      timestamp: new Date().toISOString(),
-      agentType: agent,
-    }
-    set((state) => ({
-      conversations: {
-        ...state.conversations,
-        [agent]: [...(state.conversations[agent] || []), newMsg],
+      addMessage: (message) => {
+        const newMsg: ChatMessage = {
+          ...message,
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          timestamp: new Date().toISOString(),
+        }
+        set((state) => ({
+          conversation: [...state.conversation, newMsg],
+        }))
       },
-    }))
-  },
 
-  appendToLastMessage: (agent, content) => {
-    set((state) => {
-      const msgs = state.conversations[agent] || []
-      if (msgs.length === 0) return state
-      const lastMsg = msgs[msgs.length - 1]
-      const updated = {
-        ...lastMsg,
-        content: lastMsg.content + content,
-      }
-      return {
-        conversations: {
-          ...state.conversations,
-          [agent]: [...msgs.slice(0, -1), updated],
-        },
-      }
-    })
-  },
-
-  updateMessageContent: (agent, messageId, content) => {
-    set((state) => ({
-      conversations: {
-        ...state.conversations,
-        [agent]: (state.conversations[agent] || []).map((m) =>
-          m.id === messageId ? { ...m, content } : m
-        ),
+      appendToLastMessage: (content) => {
+        set((state) => {
+          const msgs = state.conversation
+          if (msgs.length === 0) return state
+          const lastMsg = msgs[msgs.length - 1]
+          const updated = { ...lastMsg, content: lastMsg.content + content }
+          return { conversation: [...msgs.slice(0, -1), updated] }
+        })
       },
-    }))
-  },
 
-  updateMessageStatus: (agent, messageId, status) => {
-    set((state) => ({
-      conversations: {
-        ...state.conversations,
-        [agent]: (state.conversations[agent] || []).map((m) =>
-          m.id === messageId ? { ...m, status } : m
-        ),
+      updateMessageContent: (messageId, content) => {
+        set((state) => ({
+          conversation: state.conversation.map((m) =>
+            m.id === messageId ? { ...m, content } : m
+          ),
+        }))
       },
-    }))
-  },
 
-  clearConversation: (agent) => {
-    set((state) => ({
-      conversations: {
-        ...state.conversations,
-        [agent]: [],
+      updateMessageStatus: (messageId, status) => {
+        set((state) => ({
+          conversation: state.conversation.map((m) =>
+            m.id === messageId ? { ...m, status } : m
+          ),
+        }))
       },
-    }))
-  },
 
-  setStreaming: (streaming) => set({ isStreaming: streaming }),
-
-  startStreaming: () => {
-    const abortController = new AbortController()
-    const agent = get().activeAgent
-    const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      role: 'assistant',
-      content: '',
-      agentType: agent,
-      timestamp: new Date().toISOString(),
-      status: 'sending',
-    }
-
-    set((state) => ({
-      isStreaming: true,
-      streamingMessageId: newMsg.id,
-      abortController,
-      conversations: {
-        ...state.conversations,
-        [agent]: [...(state.conversations[agent] || []), newMsg],
+      clearConversation: () => {
+        set({ conversation: [] })
       },
-    }))
 
-    return newMsg.id
-  },
+      setStreaming: (streaming) => set({ isStreaming: streaming }),
 
-  stopStreaming: () => {
-    set({
-      isStreaming: false,
-      streamingMessageId: null,
-      abortController: null,
-    })
-  },
+      startStreaming: () => {
+        const abortController = new AbortController()
+        const newMsg: ChatMessage = {
+          id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          role: 'assistant',
+          content: '',
+          timestamp: new Date().toISOString(),
+          status: 'sending',
+        }
 
-  cancelStreaming: () => {
-    const { abortController } = get()
-    if (abortController) {
-      abortController.abort()
-    }
-    set({
-      isStreaming: false,
-      streamingMessageId: null,
-      abortController: null,
-    })
-  },
+        set((state) => ({
+          isStreaming: true,
+          streamingMessageId: newMsg.id,
+          abortController,
+          conversation: [...state.conversation, newMsg],
+        }))
 
-  updateMessageToolCalls: (agent, messageId, toolCalls) => {
-    set((state) => ({
-      conversations: {
-        ...state.conversations,
-        [agent]: (state.conversations[agent] || []).map((m) =>
-          m.id === messageId ? { ...m, toolCalls, status: 'sent' } : m
-        ),
+        return newMsg.id
       },
-    }))
-  },
 
-  updateToolResult: (agent, messageId, toolCallId, result, status) => {
-    set((state) => {
-      const msgs = state.conversations[agent] || []
-      return {
-        conversations: {
-          ...state.conversations,
-          [agent]: msgs.map((m) => {
+      stopStreaming: () => {
+        set({
+          isStreaming: false,
+          streamingMessageId: null,
+          abortController: null,
+        })
+      },
+
+      cancelStreaming: () => {
+        const { abortController } = get()
+        if (abortController) {
+          abortController.abort()
+        }
+        set({
+          isStreaming: false,
+          streamingMessageId: null,
+          abortController: null,
+        })
+      },
+
+      updateMessageToolCalls: (messageId, toolCalls) => {
+        set((state) => ({
+          conversation: state.conversation.map((m) =>
+            m.id === messageId ? { ...m, toolCalls, status: 'sent' } : m
+          ),
+        }))
+      },
+
+      updateToolResult: (messageId, toolCallId, result, status) => {
+        set((state) => ({
+          conversation: state.conversation.map((m) => {
             if (m.id !== messageId || !m.toolCalls) return m
             return {
               ...m,
@@ -226,23 +150,19 @@ export const useChatStore = create<ChatStore>()(
               ),
             }
           }),
-        },
-      }
-    })
-  },
+        }))
+      },
 
-  getActiveConversation: () => {
-    const { conversations, activeAgent } = get()
-    return conversations[activeAgent] || []
-  },
-}),
-{
-  name: 'nc:chat-store',
-  // 只持久化对话历史和当前 Agent，流式状态不持久化
-  partialize: (state) => ({
-    conversations: state.conversations,
-    activeAgent: state.activeAgent,
-  }),
-}
-)
+      getConversation: () => {
+        return get().conversation
+      },
+    }),
+    {
+      name: 'nc:chat-store',
+      // 只持久化对话历史
+      partialize: (state) => ({
+        conversation: state.conversation,
+      }),
+    }
+  )
 )

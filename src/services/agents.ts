@@ -248,27 +248,26 @@ const systemPromptCache = new Map<string, { prompt: string; timestamp: number }>
 const SYSTEM_PROMPT_CACHE_TTL = 5 * 60 * 1000 // 5 分钟 TTL，防止极端情况下的内存泄漏
 
 function buildSystemPromptCacheKey(args: {
-  agentType: string
   persona: Persona | null
   bookTitle?: string
 }): string {
-  return `${args.agentType}:${args.persona?.id || 'nobody'}:${args.bookTitle || 'nobook'}`
+  return `${args.persona?.id || 'nobody'}:${args.bookTitle || 'nobook'}`
 }
 
 /**
- * 获取各 Agent 的系统提示词（带缓存）
+ * 获取统一的系统提示词（带缓存）
+ * Skill 设计取代 Agent 后，所有对话共享同一套系统提示词
  */
 export function buildSystemPrompt(args: {
-  agentType: string
   persona: Persona | null
   bookTitle?: string
   bookType?: string
   mainCharacter?: string
 }): string {
-  const { agentType, persona, bookTitle = '', bookType = '', mainCharacter = '' } = args
+  const { persona, bookTitle = '', bookType = '', mainCharacter = '' } = args
 
   // 检查缓存
-  const cacheKey = buildSystemPromptCacheKey({ agentType, persona, bookTitle })
+  const cacheKey = buildSystemPromptCacheKey({ persona, bookTitle })
   const cached = systemPromptCache.get(cacheKey)
   if (cached && Date.now() - cached.timestamp < SYSTEM_PROMPT_CACHE_TTL) {
     return cached.prompt
@@ -286,15 +285,36 @@ export function buildSystemPrompt(args: {
     parts.push(buildBookPrompt(bookTitle, bookType, mainCharacter))
   }
 
-  // Agent 专有层
-  const agentPrompt = getAgentSpecificPrompt(agentType)
-  if (agentPrompt) parts.push(agentPrompt)
+  // 统一助手层（合并原各 Agent 专有提示的精华）
+  parts.push(`## 你是全栈写作助手
+
+你可以执行以下所有任务，根据用户的具体指令自动选择合适的行为模式：
+
+### 大纲规划
+- 读取 status_card.md 和 master_outline.md 了解进度
+- 生成/更新 chapter_outline.md（章纲）和 arc_outline.md（卷纲）
+- 章纲格式：章节标题、场景设定、出场人物、情节节点、悬念铺设
+
+### 章节续写
+- 通过 list_files 确认当前进度和章节编号
+- 读取最近一章保持连续性
+- 调用 write_current_draft 写入草稿
+- 每章 2000-5000 字，结尾保持悬念
+
+### 草稿审核
+- 世界观一致性、大纲匹配度、前文连续性、文风一致性、文本质量五维审稿
+
+### 风格润色
+- 语言层（词汇、句式、修辞）、叙事层（视角、节奏）、结构层
+
+### 世界观构建
+- 提取已归档章节中的设定，更新 world_model.md`)
 
   // 知识合规说明
   parts.push(`## 知识文件查阅规范
 1. 规范性文件（world_model.md, master_outline.md, arc_outline.md 等）**不预置到上下文中**
 2. 当需要参考世界观设定时，调用 read_knowledge_file 工具读取
-3. 当需要续写时，先读取 status_card.md 了解当前状态，再调用 read_current_draft 读取草稿
+3. 当需要续写时，先读取 status_card.md 了解当前状态
 4. 已归档章节通过 read_chapter 按需读取，不要一次读取多章`)
 
   const fullPrompt = parts.join('\n\n')

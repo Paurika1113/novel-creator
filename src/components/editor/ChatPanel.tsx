@@ -10,18 +10,18 @@ import { executeToolCall } from '../../services/toolExecutor'
 import { calculateContextBudget, assembleContext, getContextReport } from '../../services/contextAssembler'
 import { getAgentTools, buildSystemPrompt } from '../../services/agents'
 import { buildMemoryContext } from '../../services/memoryContext'
-import type { ChatMessage } from '../../types'
+import type { ChatMessage, SkillDef, SKILLS } from '../../types'
 import type { LLMMessage } from '../../services/llm'
 
 // ---- 工具结果折叠状态 ----
 const toolCollapseState = new Map<string, Set<string>>() // msgKey -> set of toolIds
 
-// ---- Dynamic action buttons based on selected file type ----
+// ---- Skill-based action buttons ----
 interface ActionButtonDef {
   id: string
   icon: string
   label: string
-  agent: 'continuation' | 'review' | 'world' | 'style' | null
+  skill: SkillDef['id'] | null  // 关联的 Skill，null 表示纯 UI 操作（如归档）
   prompt: string
   disabled?: boolean
 }
@@ -37,21 +37,20 @@ function getActionButtons(
   const isDraft = currentFilePath === 'drafts/chapter_draft.md' || currentFileType === 'chapter_draft'
 
   if (isChapter) {
-    // Chapter selected: show 下一章, 重写
     const nextChapterNum = chapterIndex + 1
     return [
       {
         id: 'next_chapter',
         icon: '➕',
         label: '下一章',
-        agent: 'continuation',
+        skill: 'outline',
         prompt: `当前选中的是第${chapterIndex}章「${currentFileName}」。请为**第${nextChapterNum}章**生成详细大纲。
 
 **执行步骤**：
 1. 读取 status_card.md 和 master_outline.md 了解当前进度
 2. 读取 chapter_outline.md（如为空则新建）
 3. 如果是某卷的第一章，先读取 arc_outline.md（如为空则先生成卷纲）
-4. 使用 write_knowledge_file 更新 chapter_outline.md，写入**第${nextChapterNum}章**的详细大纲
+4. 更新 chapter_outline.md，写入**第${nextChapterNum}章**的详细大纲
 
 **重要**：
 - 只生成章纲，不要生成草稿
@@ -63,20 +62,19 @@ function getActionButtons(
         id: 'rewrite_chapter',
         icon: '🔄',
         label: '重写',
-        agent: 'continuation',
+        skill: 'write_chapter',
         prompt: '请重新撰写当前章节，在保持核心情节不变的前提下优化叙事节奏、人物描写和语言风格。',
       },
     ]
   }
 
   if (isDraft) {
-    // Draft selected: show 重写, 续写, 审核, 归档
     const buttons: ActionButtonDef[] = [
       {
         id: 'rewrite',
         icon: '🔄',
         label: '重写',
-        agent: 'continuation',
+        skill: 'write_chapter',
         prompt: '请重新撰写当前草稿，在保持核心情节不变的前提下优化叙事节奏、人物描写和语言风格。',
       },
     ]
@@ -87,21 +85,21 @@ function getActionButtons(
           id: 'continue',
           icon: '✏️',
           label: '续写',
-          agent: 'continuation',
+          skill: 'continue_draft',
           prompt: '请读取当前草稿 chapter_draft.md，在末尾继续追加内容，保持叙事连贯。',
         },
         {
           id: 'review',
           icon: '📋',
           label: '审核',
-          agent: 'review',
+          skill: 'review_draft',
           prompt: '请从世界观一致性、大纲匹配度、前文连续性、文风一致性和文本质量五个维度审核当前草稿，输出结构化审核报告。',
         },
         {
           id: 'archive',
           icon: '✅',
           label: '归档',
-          agent: null,
+          skill: null,
           prompt: '',
         },
       )
@@ -110,7 +108,7 @@ function getActionButtons(
     return buttons
   }
 
-  // Chapter outline file selected: show 生成草稿 button
+  // Chapter outline file selected
   if (currentFilePath === 'knowledge/chapter_outline.md' || currentFileType === 'chapter_outline') {
     const nextChapterNum = chapterIndex + 1
     return [
@@ -118,7 +116,7 @@ function getActionButtons(
         id: 'generate_draft',
         icon: '📝',
         label: '生成草稿',
-        agent: 'continuation',
+        skill: 'write_chapter',
         prompt: `请根据 chapter_outline.md 中的第${nextChapterNum}章大纲，撰写完整的章节正文草稿。
 
 **执行步骤**：
@@ -135,26 +133,26 @@ function getActionButtons(
         id: 'modify_outline',
         icon: '✏️',
         label: '修改章纲',
-        agent: 'continuation',
-        prompt: '请根据我们的讨论，修改 chapter_outline.md 中的章节大纲。使用 write_knowledge_file 更新。',
+        skill: 'outline',
+        prompt: '请根据我们的讨论，修改 chapter_outline.md 中的章节大纲。',
       },
     ]
   }
 
-  // Default / knowledge file selected: show basic actions
+  // Default
   return [
     {
       id: 'continue',
       icon: '✏️',
       label: '续写',
-      agent: 'continuation',
+      skill: 'continue_draft',
       prompt: '请根据当前文件内容继续创作。',
     },
     {
       id: 'review',
       icon: '📋',
       label: '审核',
-      agent: 'review',
+      skill: 'review_draft',
       prompt: '请审核当前文件内容的质量和一致性。',
     },
   ]
@@ -162,20 +160,18 @@ function getActionButtons(
 
 export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
   const {
-    getActiveConversation,
     addMessage,
     setStreaming,
     isStreaming,
-    activeAgent,
-    setActiveAgent,
     streamingMessageId,
     startStreaming,
     stopStreaming,
     appendToLastMessage,
     updateMessageContent,
+    clearConversation,
   } = useChatStore()
 
-  const messages = getActiveConversation()
+  const messages = useChatStore((s) => s.conversation)
 
   const { currentBookId, currentFilePath, filesByBook, openFile, updateContent, saveContent } = useEditorStore()
   const { books } = useBookStore()
@@ -187,19 +183,18 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
-  // Auto-scroll to bottom
+  // Auto-scroll
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streamingMessageId])
 
-  // Auto-focus input when not streaming
   useEffect(() => {
     if (!isStreaming) {
       inputRef.current?.focus()
     }
   }, [isStreaming])
 
-  // Determine current file type
+  // Current file context
   const currentFiles = currentBookId ? (filesByBook[currentBookId] || []) : []
   const currentFile = currentFiles.find((f) => f.path === currentFilePath)
   const currentFileType = currentFile?.type || null
@@ -214,7 +209,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
   }
   const hasDraftContent = draftContent.trim().length > 0
 
-  // Calculate chapter index for "next chapter" button
   const chapterFiles = currentFiles.filter((f) => f.type === 'chapter')
   const currentChapterIndex = currentFile?.type === 'chapter'
     ? chapterFiles.findIndex((f) => f.path === currentFilePath) + 1
@@ -228,31 +222,30 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     currentChapterIndex,
   )
 
-  // ---- Core: send message to AI and stream response ----
-  const sendToAI = useCallback(async (agentType: string, userContent: string) => {
+  // ---- Core: send message to AI ----
+  const sendToAI = useCallback(async (userContent: string) => {
     if (isStreaming) return
 
     const msgId = startStreaming()
-    const tools = getAgentTools(agentType)
+    // 所有 Skill 共用完整工具集
+    const tools = getAgentTools('continuation')
 
     try {
       const book = books.find((b) => b.id === currentBookId)
       const { personas } = usePersonaStore.getState()
       const persona = currentBookId ? personas.find((p) => p.id === book?.boundPersonaId) || null : null
       const systemPrompt = buildSystemPrompt({
-        agentType,
         persona,
         bookTitle: book?.title,
         bookType: book?.type,
         mainCharacter: book?.mainCharacter,
       })
       const history = messages.slice(-10)
-      // selectedHistory 对外暴露，所有 Agent 共用（续写 Agent 动态截取，其余用默认 slice）
       let selectedHistory: typeof messages = history
 
-      // Dynamic context assembly
+      // Dynamic context assembly (always enabled, not only for continuation)
       let contextPrompt = ''
-      if (agentType === 'continuation' && currentBookId) {
+      if (currentBookId) {
         const chapterFiles = currentFiles.filter((f) => f.type === 'chapter')
         const { settings } = useSettingsStore.getState()
         const budget = calculateContextBudget(
@@ -263,20 +256,18 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           userContent,
         )
 
-        // Token-budget-aware history selection: instead of hardcoded slice(-10),
-        // walk backwards from newest message, accumulating tokens until budget limit
+        // Token-budget-aware history
         const historyTokenBudget = Math.max(Math.floor(budget.availableTokens * 0.15), 2000)
         let tokenSoFar = 0
         selectedHistory = []
         for (let i = messages.length - 1; i >= 0; i--) {
           const msg = messages[i]
-          const msgTokens = Math.ceil(msg.content.length * 1.2) + 50 // 50 = message overhead
+          const msgTokens = Math.ceil(msg.content.length * 1.2) + 50
           if (tokenSoFar + msgTokens > historyTokenBudget) break
           tokenSoFar += msgTokens
           selectedHistory.unshift(msg)
         }
 
-        // Recalculate budget with selected history
         const adjustedBudget = calculateContextBudget(
           settings.modelContextWindow || 200000,
           settings.compressionSensitivity || 40,
@@ -291,12 +282,12 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           currentChapterIndex: chapterFiles.length,
         })
         contextPrompt = contextResult.contextText
-          ? `\n\n## 前文参考\n${contextResult.contextText}\n\n请基于以上前文，继续创作下一章。`
+          ? `\n\n## 前文参考\n${contextResult.contextText}\n\n请基于以上前文继续创作。`
           : ''
         console.log('[ContextAssembly]', getContextReport(adjustedBudget, contextResult))
       }
 
-      // 记忆上下文 —— 跨会话感知，所有 Agent 都受益
+      // Memory context for cross-session awareness
       let memoryPrompt = ''
       if (currentBookId && currentFiles.length > 0) {
         const memoryCtx = buildMemoryContext(currentFiles, {
@@ -310,112 +301,97 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
 
       const llmMessages: LLMMessage[] = [
         { role: 'system', content: systemPrompt + contextPrompt + memoryPrompt },
-        ...(agentType === 'continuation' && currentBookId ? selectedHistory : history)
+        ...(currentBookId ? selectedHistory : history)
           .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content })),
         { role: 'user', content: userContent },
       ]
 
-      let cleanContent = ''   // 编辑器保存（纯内容，仅标签内）
-  let chatContent = ''    // 聊天显示（不含正文，只含标签外分析和工具日志）
-  let toolCallIndex = 0   // 工具调用序号，用于折叠标识
-  const executedTools: string[] = []  // 记录已执行的工具名，用于结束后强制刷新
+      let cleanContent = ''
+      let chatContent = ''
+      let toolCallIndex = 0
+      const executedTools: string[] = []
 
-  // 使用内置工具循环的流式对话 —— 整个工具调用回合由 LLM 层处理
       const stream = streamChatWithTools(
-        {
-          messages: llmMessages,
-          temperature: 0.7,
-          tools: tools.length > 0 ? tools : undefined,
-        },
-        // 工具执行回调
+        { messages: llmMessages, temperature: 0.7, tools: tools.length > 0 ? tools : undefined },
         async (name, args) => executeToolCall(name, args),
         { provider, apiKey, baseUrl, maxRounds: 30 }
       )
 
-      // 标签提取状态机：仅提取 <Main text> 到 </Main text> 之间的内容到 cleanContent
-      let inTag = false       // 当前是否在 <Main text> 标签内
-      let tagClosed = false   // 标签已关闭（聊天窗口不需要显示标签内正文）
-      let toolExecuted = false // 工具执行后停止更新编辑器
+      let inTag = false
+      let tagClosed = false
+      let toolExecuted = false
 
       for await (const delta of stream) {
         if (delta.type === 'error') {
           chatContent += `\n❌ ${delta.error}`
-          updateMessageContent(agentType as any, msgId, chatContent)
+          updateMessageContent(msgId, chatContent)
           break
         }
         if ((delta.type === 'delta' || delta.type === 'content') && delta.content) {
-          // 流式提取：仅标签内的内容才写入 cleanContent
           let chunk = delta.content
 
           if (chunk.includes('<Main text>')) {
             inTag = true
-            // 开标签前的内容 → 聊天
             const beforeTag = chunk.replace(/<Main text>[\s\S]*/, '')
             if (beforeTag) {
               chatContent += beforeTag
-              updateMessageContent(agentType as any, msgId, chatContent)
+              updateMessageContent(msgId, chatContent)
             }
-            // 移除开标签，剩余进入标签内模式
             chunk = chunk.replace(/.*<Main text>/s, '')
             if (!chunk) continue
           }
           if (chunk.includes('</Main text>')) {
             const match = chunk.match(/([\s\S]*?)<\/Main text>/s)
             if (match && match[1]) {
-              cleanContent += match[1]   // 标签内正文 → 编辑器
+              cleanContent += match[1]
             }
             inTag = false
             tagClosed = true
             chatContent += '\n\n[正文已写入 chapter_draft.md]\n\n'
-            updateMessageContent(agentType as any, msgId, chatContent)
-            // 闭标签后的内容 → 聊天
+            updateMessageContent(msgId, chatContent)
             const afterTag = chunk.replace(/[\s\S]*?<\/Main text>/s, '')
             if (afterTag) {
               chatContent += afterTag
-              updateMessageContent(agentType as any, msgId, chatContent)
+              updateMessageContent(msgId, chatContent)
             }
             continue
           }
           if (inTag) {
-            cleanContent += chunk   // 标签内正文 → 编辑器
+            cleanContent += chunk
           } else {
-            chatContent += chunk    // 标签外文字 → 聊天
-            updateMessageContent(agentType as any, msgId, chatContent)
+            chatContent += chunk
+            updateMessageContent(msgId, chatContent)
           }
 
-          // 实时同步：只有大纲阶段同步，草稿阶段完全由工具写入
           if (!toolExecuted) {
             if (workflow.phase === 'outline' && currentFilePath === 'knowledge/chapter_outline.md') {
               updateContent(cleanContent)
             }
-            // 草稿阶段：不做任何 updateContent —— 文件完全由 write_current_draft 工具写入
           }
         }
         if (delta.type === 'tool_result') {
           toolExecuted = true
           executedTools.push(delta.toolName)
           const toolId = `t${toolCallIndex++}`
-          // 工具结果用特殊标记包裹，renderMessageContent 识别后渲染为可折叠区块
           chatContent += `\n\n<!--TOOL:${delta.toolName}:${toolId}:${msgId}-->\n${delta.toolResult}\n<!--TOOL_END:${toolId}-->\n\n`
-          updateMessageContent(agentType as any, msgId, chatContent)
+          updateMessageContent(msgId, chatContent)
         }
         if (delta.type === 'tool_loop_continue') {
-          // 工具循环分隔（无工具调用时不显示多余分隔线）
           if (toolCallIndex > 0) {
             chatContent += '\n\n'
-            updateMessageContent(agentType as any, msgId, chatContent)
+            updateMessageContent(msgId, chatContent)
           }
         }
       }
 
-      // 保存工作流状态
+      // Save workflow state
       if (workflow.phase === 'outline' && cleanContent) {
         workflow.outlineContent = cleanContent
       } else if (workflow.phase === 'draft' && cleanContent) {
         workflow.draftContent = cleanContent
       }
 
-      // 非工具写入场景：AI 聊天输出的内容需要写入编辑器文件
+      // Non-tool write path
       if (!toolExecuted) {
         const contentToSave = cleanContent || chatContent.trim()
         if (contentToSave) {
@@ -429,35 +405,27 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         }
       }
 
-      // 工具执行后的强制刷新：如果 write_current_draft 或 append_to_draft 被调用过，
-      // 用 openFile 从 localStorage 重新加载最新内容，确保编辑器与文件同步
+      // Force editor refresh after tool writes
       const hasDraftWrite = executedTools.some((t) =>
         t === 'write_current_draft' || t === 'append_to_draft'
       )
       if (hasDraftWrite) {
-        // 从 localStorage 读取工具写入的最新内容
         const draftContent = (() => {
           try {
             return localStorage.getItem(`nc:${currentBookId}:drafts/chapter_draft.md`) || ''
           } catch { return '' }
         })()
-        // 如果 localStorage 有内容但编辑器没显示，强制刷新
         if (draftContent && draftContent.trim()) {
           const editorState = useEditorStore.getState()
           if (editorState.editorContent !== draftContent) {
-            // 直接 setState 强制更新编辑器内容
             useEditorStore.setState({ editorContent: draftContent, isDirty: false })
           }
         }
-        // 如果流内的 cleanContent 比工具写入的内容更长（AI 在聊天中输出了完整正文），
-        // 且工具写入被占位文字拦截了，用 cleanContent 覆盖
         if (cleanContent && cleanContent.trim().length > 50) {
           const draftLen = draftContent.trim().length
           const streamLen = cleanContent.trim().length
           if (streamLen > draftLen * 2) {
-            // 流内正文远长于草稿 → 工具可能写了占位文字，用流内正文覆盖
             useEditorStore.setState({ editorContent: cleanContent, isDirty: false })
-            // 同步更新 filesByBook 和 localStorage
             const store = useEditorStore.getState()
             const files = store.filesByBook[currentBookId!] || []
             const idx = files.findIndex((f) => f.path === 'drafts/chapter_draft.md')
@@ -473,117 +441,99 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
 
       stopStreaming()
     } catch (error) {
-      updateMessageContent(agentType as any, msgId, `❌ 请求失败：${error instanceof Error ? error.message : '未知错误'}`)
+      updateMessageContent(msgId, `❌ 请求失败：${error instanceof Error ? error.message : '未知错误'}`)
       stopStreaming()
     }
   }, [isStreaming, messages, provider, apiKey, baseUrl, currentBookId, books, currentFiles, startStreaming, stopStreaming, updateMessageContent, workflow, currentFilePath, updateContent, saveContent])
 
-  // ---- Send message from input ----
+  // ---- Send from input ----
   const handleSend = useCallback(async () => {
     if (!input.trim() || isStreaming) return
 
     const userContent = input.trim()
-    addMessage(activeAgent, { role: 'user', content: userContent })
+    addMessage({ role: 'user', content: userContent })
     setInput('')
-    await sendToAI(activeAgent, userContent)
-  }, [input, isStreaming, activeAgent, addMessage, setInput, sendToAI])
+    await sendToAI(userContent)
+  }, [input, isStreaming, addMessage, setInput, sendToAI])
 
-  // ---- Handle workflow action button click ----
+  // ---- Workflow action ----
   const handleWorkflowAction = useCallback(async (actionId: string) => {
     const chapterFiles = currentFiles.filter((f) => f.type === 'chapter')
-    const lastChapter = chapterFiles[chapterFiles.length - 1]
 
     switch (actionId) {
       case 'regenerate_outline':
-        // Regenerate outline
         workflow.regenerateOutline()
-        addMessage('continuation', { role: 'user', content: '请重新生成第' + workflow.currentChapterNum + '章的大纲。' })
-        await sendToAI('continuation', '请重新生成第' + workflow.currentChapterNum + '章的大纲。')
+        addMessage({ role: 'user', content: '请重新生成第' + workflow.currentChapterNum + '章的大纲。' })
+        await sendToAI('请重新生成第' + workflow.currentChapterNum + '章的大纲。')
         break
 
       case 'rewrite_selection':
-        // Rewrite selected text
         if (workflow.selectedText) {
-          addMessage('continuation', { role: 'user', content: `请重写以下内容：\n\n${workflow.selectedText}` })
-          await sendToAI('continuation', `请重写以下内容：\n\n${workflow.selectedText}`)
+          addMessage({ role: 'user', content: `请重写以下内容：\n\n${workflow.selectedText}` })
+          await sendToAI(`请重写以下内容：\n\n${workflow.selectedText}`)
         }
         break
 
       case 'confirm_outline':
-        // Confirm outline and proceed to draft phase
         workflow.confirmOutline(workflow.outlineContent)
-        // Open draft file
         openFile('drafts/chapter_draft.md', '')
-        addMessage('continuation', { role: 'user', content: '大纲已确认。请根据大纲生成章节正文草稿。' })
-        await sendToAI('continuation', '大纲已确认。请根据大纲生成章节正文草稿。')
+        addMessage({ role: 'user', content: '大纲已确认。请根据大纲生成章节正文草稿。' })
+        await sendToAI('大纲已确认。请根据大纲生成章节正文草稿。')
         break
 
       case 'regenerate_draft':
-        // Regenerate draft
         workflow.regenerateDraft()
-        addMessage('continuation', { role: 'user', content: '请重新生成章节正文草稿。' })
-        await sendToAI('continuation', '请重新生成章节正文草稿。')
+        addMessage({ role: 'user', content: '请重新生成章节正文草稿。' })
+        await sendToAI('请重新生成章节正文草稿。')
         break
 
       case 'confirm_draft':
-        // Confirm draft and proceed to review phase
         workflow.confirmDraft(workflow.draftContent)
-        addMessage('review', { role: 'user', content: '请审核当前章节草稿。' })
-        await sendToAI('review', '请审核当前章节草稿。')
+        addMessage({ role: 'user', content: '请审核当前章节草稿。' })
+        await sendToAI('请审核当前章节草稿。')
         break
 
       case 'auto_fix':
-        // Auto fix based on review report
-        addMessage('continuation', { role: 'user', content: `请根据以下审核报告修改草稿：\n\n${workflow.reviewReport}` })
-        await sendToAI('continuation', `请根据以下审核报告修改草稿：\n\n${workflow.reviewReport}`)
+        addMessage({ role: 'user', content: `请根据以下审核报告修改草稿：\n\n${workflow.reviewReport}` })
+        await sendToAI(`请根据以下审核报告修改草稿：\n\n${workflow.reviewReport}`)
         break
 
       case 'archive':
-        // Archive chapter
         workflow.archive()
         onArchive?.()
         break
 
       case 'next_chapter':
-        // Start next chapter workflow
         workflow.reset()
-        const nextChapterNum = currentChapterIndex + 1
-        workflow.startOutline(nextChapterNum, `第${nextChapterNum}章`)
-        // Note: openFile is called after AI response in handleActionClick
+        workflow.startOutline(currentChapterIndex + 1, `第${currentChapterIndex + 1}章`)
         break
 
       case 'reset_workflow':
-        // Reset workflow to idle
         workflow.reset()
         break
     }
   }, [workflow, currentFiles, addMessage, sendToAI, openFile, onArchive, currentChapterIndex])
 
-  // ---- Handle action button click ----
+  // ---- Skill button click ----
   const handleActionClick = useCallback(async (action: ActionButtonDef) => {
     if (action.id === 'archive') {
       onArchive?.()
       return
     }
-    if (!action.agent) return
+    if (!action.skill) return
 
-    // Workflow-aware button handling
     if (action.id === 'next_chapter') {
-      // Start outline workflow
       const nextChapterNum = currentChapterIndex + 1
       workflow.startOutline(nextChapterNum, `第${nextChapterNum}章`)
     }
 
-    setActiveAgent(action.agent)
-    addMessage(action.agent, { role: 'user', content: action.prompt })
-    await sendToAI(action.agent, action.prompt)
-    
-    // After AI response, open the outline file
+    addMessage({ role: 'user', content: action.prompt })
+    await sendToAI(action.prompt)
+
     if (action.id === 'next_chapter') {
-      const outlinePath = 'knowledge/chapter_outline.md'
-      openFile(outlinePath, '')
+      openFile('knowledge/chapter_outline.md', '')
     }
-  }, [onArchive, setActiveAgent, addMessage, sendToAI, workflow, currentChapterIndex, openFile])
+  }, [onArchive, addMessage, sendToAI, workflow, currentChapterIndex, openFile])
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -592,7 +542,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     }
   }
 
-  // ---- 切换工具折叠状态 ----
+  // ---- Tool collapse ----
   const toggleTool = useCallback((msgKey: string, toolId: string) => {
     if (!toolCollapseState.has(msgKey)) {
       toolCollapseState.set(msgKey, new Set())
@@ -603,7 +553,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     } else {
       set.add(toolId)
     }
-    // 触发重渲染
     setExpandedTools((prev) => {
       const next = new Map(prev)
       next.set(msgKey, new Set(set))
@@ -611,30 +560,18 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     })
   }, [])
 
-  // ---- 渲染纯文本行 ----
   function renderTextLines(text: string) {
     const lines = text.split('\n')
     return lines.map((line, i) => {
-      if (line.startsWith('# ')) {
-        return <h3 key={i} className="chat-message-heading">{line.slice(2)}</h3>
-      }
-      if (line.startsWith('## ')) {
-        return <h4 key={i} className="chat-message-heading">{line.slice(3)}</h4>
-      }
-      if (line.startsWith('- ')) {
-        return <li key={i} className="chat-message-list-item">{line.slice(2)}</li>
-      }
-      if (line.startsWith('> ')) {
-        return <blockquote key={i} className="chat-message-quote">{line.slice(2)}</blockquote>
-      }
-      if (line.trim() === '') {
-        return <div key={i} style={{ height: 8 }} />
-      }
+      if (line.startsWith('# ')) return <h3 key={i} className="chat-message-heading">{line.slice(2)}</h3>
+      if (line.startsWith('## ')) return <h4 key={i} className="chat-message-heading">{line.slice(3)}</h4>
+      if (line.startsWith('- ')) return <li key={i} className="chat-message-list-item">{line.slice(2)}</li>
+      if (line.startsWith('> ')) return <blockquote key={i} className="chat-message-quote">{line.slice(2)}</blockquote>
+      if (line.trim() === '') return <div key={i} style={{ height: 8 }} />
       return <p key={i} className="chat-message-paragraph">{line}</p>
     })
   }
 
-  // ---- 渲染包含可折叠工具结果的消息内容 ----
   function renderMessageContent(content: string, msgIndex: number) {
     const msgKey = `${msgIndex}`
     const expandedSet = toolCollapseState.get(msgKey) || new Set<string>()
@@ -654,88 +591,57 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       segments.push({ type: 'text', content: content.slice(lastIdx) })
     }
 
-    if (segments.length === 0) {
-      return renderTextLines(content)
-    }
+    if (segments.length === 0) return renderTextLines(content)
 
     return segments.map((seg, i) => {
       if (seg.type === 'tool') {
         const isExpanded = expandedSet.has(seg.toolId!)
         const toolName = seg.toolName!
         const toolContent = seg.content || ''
-        // 截取首行作为预览（折叠时显示）
         const firstLine = toolContent.split('\n')[0]?.trim().slice(0, 80) || ''
         return (
           <div key={i} className="chat-tool-result">
-            <div
-              className="chat-tool-result-header"
-              onClick={() => toggleTool(msgKey, seg.toolId!)}
-              title="点击展开/折叠"
-            >
+            <div className="chat-tool-result-header" onClick={() => toggleTool(msgKey, seg.toolId!)} title="点击展开/折叠">
               <span className="chat-tool-result-caret">{isExpanded ? '▼' : '▶'}</span>
               <span className="chat-tool-result-icon">🔧</span>
               <span className="chat-tool-result-name">{toolName}</span>
-              {!isExpanded && firstLine && (
-                <span className="chat-tool-result-preview">{firstLine}</span>
-              )}
+              {!isExpanded && firstLine && <span className="chat-tool-result-preview">{firstLine}</span>}
             </div>
-            {isExpanded && (
-              <div className="chat-tool-result-body">
-                {renderTextLines(toolContent)}
-              </div>
-            )}
+            {isExpanded && <div className="chat-tool-result-body">{renderTextLines(toolContent)}</div>}
           </div>
         )
       }
-      // 空文本跳过
       if (!seg.content?.trim()) return null
       return <div key={i}>{renderTextLines(seg.content!)}</div>
     })
   }
 
-  // 触发折叠状态重渲染的 dummy state
   const [, setExpandedTools] = useState<Map<string, Set<string>>>(new Map())
-
   const activeBook = currentBookId ? books.find((b) => b.id === currentBookId) : null
 
   return (
     <div className="chat-panel">
-      {/* Messages */}
       <div className="chat-messages">
         {messages.length === 0 && (
           <div className="chat-empty">
             <div className="chat-empty-icon">🤖</div>
-            <div className="chat-empty-title">
-              {activeAgent
-                ? `${activeAgent === 'continuation' ? '续写' : activeAgent === 'review' ? '审核' : activeAgent === 'world' ? '世界观' : activeAgent === 'style' ? '文风' : 'AI'} 助手`
-                : 'AI 创作助手'}
-            </div>
+            <div className="chat-empty-title">AI 创作助手</div>
             <div className="chat-empty-subtitle">
-              {activeBook
-                ? `当前作品：${activeBook.title}`
-                : '选择一本书开始创作'}
+              {activeBook ? `当前作品：${activeBook.title}` : '选择一本书开始创作'}
             </div>
             <div className="chat-empty-hint">
-              输入指令或点击下方按钮开始创作
+              输入指令或点击下方 Skill 按钮开始创作
             </div>
           </div>
         )}
 
         {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`chat-message ${msg.role === 'user' ? 'user' : 'assistant'}`}
-          >
-            <div className="chat-message-avatar">
-              {msg.role === 'user' ? '👤' : '🤖'}
-            </div>
-            <div className="chat-message-content">
-              {renderMessageContent(msg.content, index)}
-            </div>
+          <div key={index} className={`chat-message ${msg.role === 'user' ? 'user' : 'assistant'}`}>
+            <div className="chat-message-avatar">{msg.role === 'user' ? '👤' : '🤖'}</div>
+            <div className="chat-message-content">{renderMessageContent(msg.content, index)}</div>
           </div>
         ))}
 
-        {/* Streaming cursor on last message */}
         {isStreaming && (
           <div className="chat-message assistant">
             <div className="chat-message-avatar">🤖</div>
@@ -748,12 +654,10 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input area */}
       <div className="chat-input-area">
-        {/* Workflow action buttons — above input */}
+        {/* Skill buttons + workflow actions */}
         <div className="chat-action-buttons">
           {workflow.phase !== 'idle' && workflow.phase !== 'archived' ? (
-            // Workflow mode: show workflow actions
             workflow.getCurrentActions().map((action) => (
               <button
                 key={action.id}
@@ -765,7 +669,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
               </button>
             ))
           ) : (
-            // Normal mode: show file-based actions
             actionButtons.map((action) => (
               <button
                 key={action.id}
@@ -779,7 +682,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           )}
         </div>
 
-        {/* Input row */}
         <div className="chat-input-row">
           <input
             ref={inputRef}
@@ -805,7 +707,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           </button>
         </div>
 
-        {/* Model selector */}
         <div className="chat-model-selector">
           <select
             className="chat-model-select"
@@ -823,9 +724,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
               <option value="">请先配置模型</option>
             ) : (
               savedModels.map((sm) => (
-                <option key={sm.name} value={sm.name}>
-                  {sm.name}
-                </option>
+                <option key={sm.name} value={sm.name}>{sm.name}</option>
               ))
             )}
           </select>

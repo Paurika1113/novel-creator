@@ -59,7 +59,6 @@ export default function MarkdownEditor() {
   const [selectedText, setSelectedText] = useState('')
   const [selectionPos, setSelectionPos] = useState<{ top: number; left: number } | null>(null)
   const addMessage = useChatStore((s) => s.addMessage)
-  const setActiveAgent = useChatStore((s) => s.setActiveAgent)
   const isStreaming = useChatStore((s) => s.isStreaming)
   const settings = useSettingsStore((s) => s.settings)
   const memoryStore = useMemoryStore()
@@ -197,8 +196,7 @@ export default function MarkdownEditor() {
     if (!selectedText) return
 
     const continuationPrompt = `${action.prompt}${selectedText}`
-    setActiveAgent('continuation')
-    addMessage('continuation', { role: 'user', content: continuationPrompt })
+    addMessage({ role: 'user', content: continuationPrompt })
     setSelectedText('')
     setSelectionPos(null)
   }
