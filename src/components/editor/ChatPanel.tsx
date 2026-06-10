@@ -18,8 +18,8 @@ const toolCollapseState = new Map<string, Set<string>>() // msgKey -> set of too
 
 // ---- 斜杠命令系统 ----
 const SLASH_COMMANDS = [
-  { id: 'outline', icon: '📝', label: '生成大纲', prompt: '请为下一章生成详细章节大纲。先读取 master_outline.md 了解全书结构，然后生成 chapter_outline.md。' },
-  { id: 'write', icon: '➕', label: '写新章', prompt: '请根据 chapter_outline.md 中的大纲，撰写完整的章节正文草稿。使用 write_current_draft 写入。' },
+  { id: 'outline', icon: '📝', label: '生成大纲', prompt: '请为下一章生成详细大纲。先读取 status_card.md 和 master_outline.md 了解全书结构。每个章节有专属的 {chapters/N.outline.md} 文件，请使用 write_knowledge_file 工具写入对应章节的纲要文件。章纲格式：章节标题、场景设定、出场人物、情节节点、悬念铺设。' },
+  { id: 'write', icon: '➕', label: '写新章', prompt: '请根据 chapters/{编号}.outline.md 对应章节的纲要，撰写完整的章节正文草稿。使用 write_current_draft 写入。' },
   { id: 'continue', icon: '✏️', label: '续写', prompt: '请读取当前草稿 chapter_draft.md，在末尾继续追加内容，保持叙事连贯。' },
   { id: 'review', icon: '📋', label: '审核草稿', prompt: '请从世界观一致性、大纲匹配度、前文连续性、文风一致性和文本质量五个维度审核当前草稿，输出结构化审核报告。' },
   { id: 'polish', icon: '🎨', label: '润色文风', prompt: '请读取当前草稿，从语言层、叙事层和结构层进行润色优化。完成后用 write_current_draft 覆盖原草稿。' },
@@ -57,14 +57,13 @@ function getActionButtons(
 
 **执行步骤**：
 1. 读取 status_card.md 和 master_outline.md 了解当前进度
-2. 读取 chapter_outline.md（如为空则新建）
+2. 读取 chapters/${String(nextChapterNum).padStart(3, '0')}.outline.md（如为空则新建）
 3. 如果是某卷的第一章，先读取 arc_outline.md（如为空则先生成卷纲）
-4. 更新 chapter_outline.md，写入**第${nextChapterNum}章**的详细大纲
+4. 使用 write_knowledge_file 写入 chapters/${String(nextChapterNum).padStart(3, '0')}.outline.md，写入**第${nextChapterNum}章**的详细大纲
 
 **重要**：
 - 只生成章纲，不要生成草稿
 - 章纲生成后，用户会在聊天窗口与你讨论确认
-- 讨论结束后，用户会点击"生成草稿"按钮让你撰写正文
 - 你正在创作的是第${nextChapterNum}章，不是第${chapterIndex}章`,
       },
       {
@@ -95,7 +94,7 @@ function getActionButtons(
           icon: '✏️',
           label: '续写',
           skill: 'continue_draft',
-          prompt: '请读取当前草稿 chapter_draft.md，在末尾继续追加内容，保持叙事连贯。',
+          prompt: '请读取当前草稿，在末尾继续追加内容，保持叙事连贯。',
         },
         {
           id: 'review',
@@ -118,20 +117,21 @@ function getActionButtons(
   }
 
   // Chapter outline file selected
-  if (currentFilePath === 'knowledge/chapter_outline.md' || currentFileType === 'chapter_outline') {
-    const nextChapterNum = chapterIndex + 1
+  if (currentFileType === 'chapter_outline') {
+    const match = currentFilePath?.match(/chapters\/(\d+)\.outline\.md$/)
+    const chNum = match ? parseInt(match[1], 10) : chapterIndex + 1
     return [
       {
         id: 'generate_draft',
         icon: '📝',
         label: '生成草稿',
         skill: 'write_chapter',
-        prompt: `请根据 chapter_outline.md 中的第${nextChapterNum}章大纲，撰写完整的章节正文草稿。
+        prompt: `请根据当前章节大纲，撰写完整的章节正文草稿。
 
 **执行步骤**：
-1. 读取 chapter_outline.md 获取第${nextChapterNum}章的详细大纲
-2. 读取最近一章（第${chapterIndex}章）的结尾内容，保持连续性
-3. 使用 write_current_draft 撰写第${nextChapterNum}章的完整正文草稿
+1. 读取当前章节的纲要文件（${currentFilePath}）获取详细大纲
+2. 读取最近一章（第${chNum}章）的结尾内容，保持连续性
+3. 使用 write_current_draft 撰写本章的完整正文草稿
 
 **要求**：
 - 严格遵循大纲中的场景设定、人物出场和情节推进
@@ -143,7 +143,7 @@ function getActionButtons(
         icon: '✏️',
         label: '修改章纲',
         skill: 'outline',
-        prompt: '请根据我们的讨论，修改 chapter_outline.md 中的章节大纲。',
+        prompt: `请根据我们的讨论，修改当前章节的纲要文件 ${currentFilePath}。使用 write_knowledge_file 工具写入更新后的内容。`,
       },
     ]
   }
@@ -373,7 +373,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           }
 
           if (!toolExecuted) {
-            if (workflow.phase === 'outline' && currentFilePath === 'knowledge/chapter_outline.md') {
+            if (workflow.phase === 'outline' && currentFileType === 'chapter_outline') {
               updateContent(cleanContent)
             }
           }
@@ -404,7 +404,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       if (!toolExecuted) {
         const contentToSave = cleanContent || chatContent.trim()
         if (contentToSave) {
-          if (workflow.phase === 'outline' && currentFilePath === 'knowledge/chapter_outline.md') {
+          if (workflow.phase === 'outline' && currentFileType === 'chapter_outline') {
             updateContent(contentToSave)
             saveContent()
           } else if (workflow.phase === 'draft' && currentFilePath === 'drafts/chapter_draft.md') {
@@ -540,7 +540,9 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     await sendToAI(action.prompt)
 
     if (action.id === 'next_chapter') {
-      openFile('knowledge/chapter_outline.md', '')
+      const nextNum = currentChapterIndex + 1
+      const outlinePath = `chapters/${String(nextNum).padStart(3, '0')}.outline.md`
+      openFile(outlinePath, '')
     }
   }, [onArchive, addMessage, sendToAI, workflow, currentChapterIndex, openFile])
 

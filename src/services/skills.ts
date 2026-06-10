@@ -23,7 +23,7 @@ const TOOL_READ_FILE: ToolDefinition = {
       properties: {
         fileName: {
           type: 'string',
-          description: '文件名，如 world_model.md, master_outline.md, arc_outline.md, chapter_outline.md, status_card.md, summary.md, style_fingerprint.md, brainstorm.md, error_archive.md',
+          description: '文件名，如 world_model.md, master_outline.md, arc_outline.md, status_card.md, summary.md, style_fingerprint.md, brainstorm.md, error_archive.md。也支持完整路径如 chapters/001.outline.md。',
         },
       },
       required: ['fileName'],
@@ -119,7 +119,7 @@ const TOOL_WRITE_KNOWLEDGE: ToolDefinition = {
       properties: {
         fileName: {
           type: 'string',
-          description: '要写入的文件名（如 chapter_outline.md, arc_outline.md, world_model.md）',
+          description: '要写入的文件名（如 arc_outline.md, world_model.md）。写入章节专属纲要时使用完整路径如 chapters/004.outline.md，AI 会自动识别为章节纲要类型。',
         },
         content: {
           type: 'string',
@@ -247,7 +247,9 @@ export function buildSystemPrompt(args: {
 
 ### 大纲规划
 - 读取 status_card.md 和 master_outline.md 了解进度
-- 生成/更新 chapter_outline.md（章纲）和 arc_outline.md（卷纲）
+- 每个章节有专属的纲要文件: chapters/编号.outline.md (如 chapters/004.outline.md)
+- 生成章纲时使用 write_knowledge_file 写入对应的 chapters/编号.outline.md，AI 会自动识别类型
+- 还可更新 arc_outline.md（卷纲）
 - 章纲格式：章节标题、场景设定、出场人物、情节节点、悬念铺设
 
 ### 章节续写
@@ -296,7 +298,7 @@ export function getAgentTools(): ToolDefinition[] {
 
 export function buildFileListHint(files: KnowledgeFile[]): string {
   const knowledgeFiles = files.filter((f) =>
-    ['world_model', 'master_outline', 'arc_outline', 'chapter_outline', 'status_card', 'summary', 'style_fingerprint', 'brainstorm', 'error_archive'].includes(f.type),
+    ['world_model', 'master_outline', 'arc_outline', 'status_card', 'summary', 'style_fingerprint', 'brainstorm', 'error_archive'].includes(f.type),
   )
 
   if (knowledgeFiles.length === 0) return ''

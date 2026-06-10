@@ -22,7 +22,8 @@ const SECTIONS: FileGroup[] = [
     key: 'knowledge',
     icon: '📚',
     label: '知识',
-    predicate: (t) => t !== 'chapter',
+    predicate: (t) =>
+      !['chapter', 'chapter_draft', 'chapter_outline'].includes(t),
   },
 ]
 
@@ -101,6 +102,7 @@ export default function FileTree() {
     if (!currentBookId) return
     const num = nextChapterNumber(files)
     const path = `chapters/${String(num).padStart(3, '0')}.md`
+    const outlinePath = `chapters/${String(num).padStart(3, '0')}.outline.md`
     const title = defaultChapterTitle(num)
     const now = new Date().toISOString()
     const newFile: KnowledgeFile = {
@@ -110,8 +112,15 @@ export default function FileTree() {
       content: `# ${title}\n\n`,
       updatedAt: now,
     }
+    const outlineFile: KnowledgeFile = {
+      name: `${title}·纲要`,
+      path: outlinePath,
+      type: 'chapter_outline',
+      content: `# ${title}·纲要\n\n`,
+      updatedAt: now,
+    }
     const currentFiles = filesByBook[currentBookId] || []
-    setFiles([...currentFiles, newFile])
+    setFiles([...currentFiles, newFile, outlineFile])
     // 自动打开新章节
     openFile(path, newFile.content)
   }
@@ -232,12 +241,14 @@ export default function FileTree() {
                           <div
                             className="file-tree-item file-tree-child-item"
                             onClick={() => {
-                              const summaryFile = files.find((f) => f.type === 'summary')
-                              if (summaryFile) {
-                                openFileOrSummary('knowledge/summary.md', summaryFile.content)
+                              // 打开章节专属的纲要文件 chapters/{N}.outline.md
+                              const outlinePath = file.path.replace(/\.md$/, '.outline.md')
+                              const outlineFile = files.find((f) => f.path === outlinePath)
+                              if (outlineFile) {
+                                openFileOrSummary(outlineFile.path, outlineFile.content)
                               }
                             }}
-                            title="查看章节概要"
+                            title="查看章节纲要"
                           >
                             <span className="file-tree-item-icon">📋</span>
                             <span className="file-tree-item-name">纲要</span>

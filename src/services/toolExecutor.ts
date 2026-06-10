@@ -174,8 +174,10 @@ function updateFile(path: string, content: string, fileType?: string): void {
 }
 
 function readKnowledgeFile(fileName: string): string {
-  // Try matching by name or path suffix
+  // Try matching by path, name, or path suffix
+  const isFullPath = fileName.includes('/')
   const file =
+    (isFullPath ? findFile((f) => f.path === fileName) : undefined) ||
     findFile((f) => f.name === fileName) ||
     findFile((f) => f.path.endsWith('/' + fileName)) ||
     findFile((f) => f.path.endsWith(fileName))
@@ -284,17 +286,48 @@ function readChapter(index: number): string {
 
 function writeKnowledgeFile(fileName: string, content: string): string {
   const extracted = extractMainText(content)
-  // Find the file by name
-  const file =
-    findFile((f) => f.name === fileName) ||
-    findFile((f) => f.path.endsWith('/' + fileName))
+  // fileName 含 "/" 时视为完整路径，否则自动补 knowledge/ 前缀
+  const isFullPath = fileName.includes('/')
+
+  // 优先按完整路径查找，否则按文件名查找
+  const file = isFullPath
+    ? findFile((f) => f.path === fileName)
+    : findFile((f) => f.name === fileName) || findFile((f) => f.path.endsWith('/' + fileName))
 
   if (file) {
     updateFile(file.path, extracted, file.type)
   } else {
-    // Add new knowledge file
-    const path = `knowledge/${fileName}`
-    updateFile(path, extracted, 'other')
+    const path = isFullPath ? fileName : `knowledge/${fileName}`
+
+    // 根据路径模式推断 fileType
+    let fileType: string = 'other'
+    if (path.match(/\.outline\.md$/)) fileType = 'chapter_outline'
+    else if (path.startsWith('drafts/')) fileType = 'chapter_draft'
+
+    const store = useEditorStore.getState()
+    const bookId = store.currentBookId
+    if (bookId) {
+      const currentFiles = store.filesByBook[bookId] || []
+      const newFile: KnowledgeFile = {
+        name: path.split('/').pop()?.replace(/\.md$/, '') || path,
+        path,
+        type: fileType as any,
+        content: extracted,
+        updatedAt: new Date().toISOString(),
+      }
+      store.setFiles([...currentFiles, newFile])
+      try {
+        localStorage.setItem(`nc:${bookId}:${path}`, extracted)
+      } catch (e) {
+        console.warn('Failed to persist file content:', e)
+      }
+      // 如果编辑器正好打开此路径，立即刷新
+      const currentState = useEditorStore.getState()
+      if (currentState.currentFilePath === path) {
+        useEditorStore.setState({ editorContent: extracted, isDirty: false })
+      }
+      return `✅ 文件 "${path}" 已创建。正文长度：${extracted.length} 字符。`
+    }
   }
   return `✅ 知识文件 "${fileName}" 已更新。正文长度：${extracted.length} 字符。`
 }
