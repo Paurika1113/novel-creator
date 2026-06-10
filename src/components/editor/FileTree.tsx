@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useEditorStore } from '../../stores/editorStore'
 import type { KnowledgeFileType } from '../../types'
 
@@ -57,11 +57,36 @@ export default function FileTree() {
   const currentFilePath = useEditorStore((s) => s.currentFilePath)
   const openFile = useEditorStore((s) => s.openFile)
 
+  // 章节展开状态：已归档章节可展开，显示"纲要"和"正文"两个子项
+  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set())
+
   // 在组件内用 useMemo 获取当前书籍的文件列表，避免无限循环
   const files = useMemo(() => {
     if (!currentBookId) return []
     return filesByBook[currentBookId] || []
   }, [filesByBook, currentBookId])
+
+  function toggleChapter(path: string) {
+    setExpandedChapters((prev) => {
+      const next = new Set(prev)
+      if (next.has(path)) {
+        next.delete(path)
+      } else {
+        next.add(path)
+      }
+      return next
+    })
+  }
+
+  function openFileOrSummary(filePath: string, content: string) {
+    // 如果当前编辑器中就是这个文件，直接刷新内容
+    const currentState = useEditorStore.getState()
+    if (currentState.currentFilePath === filePath) {
+      useEditorStore.setState({ editorContent: content, isDirty: false })
+      return
+    }
+    openFile(filePath, content)
+  }
 
   return (
     <div className="file-tree">
@@ -80,6 +105,50 @@ export default function FileTree() {
                 const isActive = file.path === currentFilePath
                 const isChapter = file.type === 'chapter'
                 const isDraft = file.type === 'chapter_draft'
+                const isExpanded = expandedChapters.has(file.path)
+
+                if (isChapter) {
+                  // 章节树杈分支：父项点击展开/折叠，子项为"纲要"和"正文"
+                  return (
+                    <div key={file.path}>
+                      <div
+                        className={`file-tree-item file-tree-chapter-parent${isActive ? ' active' : ''}`}
+                        onClick={() => toggleChapter(file.path)}
+                      >
+                        <span className="file-tree-item-caret">{isExpanded ? '▼' : '▶'}</span>
+                        <span className="file-tree-item-icon">📄</span>
+                        <span className="file-tree-item-name">{file.name}</span>
+                        <span className="file-tree-item-badge archived">✓</span>
+                      </div>
+                      {isExpanded && (
+                        <div className="file-tree-chapter-children">
+                          <div
+                            className="file-tree-item file-tree-child-item"
+                            onClick={() => {
+                              // 纲要：打开 summary.md 查看本章概要
+                              const summaryFile = files.find((f) => f.type === 'summary')
+                              if (summaryFile) {
+                                openFileOrSummary('knowledge/summary.md', summaryFile.content)
+                              }
+                            }}
+                            title="查看章节概要（summary.md）"
+                          >
+                            <span className="file-tree-item-icon">📋</span>
+                            <span className="file-tree-item-name">纲要</span>
+                          </div>
+                          <div
+                            className={`file-tree-item file-tree-child-item${isActive ? ' active' : ''}`}
+                            onClick={() => openFileOrSummary(file.path, file.content)}
+                            title="查看章节正文"
+                          >
+                            <span className="file-tree-item-icon">📝</span>
+                            <span className="file-tree-item-name">正文</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                }
 
                 return (
                   <div
@@ -88,12 +157,9 @@ export default function FileTree() {
                     onClick={() => openFile(file.path, file.content)}
                   >
                     <span className="file-tree-item-icon">
-                      {isChapter ? '📄' : isDraft ? '✏️' : fileIcon(file.type)}
+                      {isDraft ? '✏️' : fileIcon(file.type)}
                     </span>
                     <span className="file-tree-item-name">{file.name}</span>
-                    {isChapter && (
-                      <span className="file-tree-item-badge archived">✓</span>
-                    )}
                     {isDraft && (
                       <span className="file-tree-item-badge draft">📝</span>
                     )}

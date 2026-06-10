@@ -116,7 +116,7 @@ export default function EditorPage() {
   const storedLeft = localStorage.getItem('nc:panelLeftWidth')
   const storedRight = localStorage.getItem('nc:panelRightWidth')
   const [leftWidth, setLeftWidth] = useState(storedLeft ? Number(storedLeft) : 240)
-  const [rightWidth, setRightWidth] = useState(storedRight ? Number(storedRight) : 340)
+  const [rightWidth, setRightWidth] = useState(storedRight ? Number(storedRight) : 360)
   const [isDraggingLeft, setIsDraggingLeft] = useState(false)
   const [isDraggingRight, setIsDraggingRight] = useState(false)
 
@@ -208,7 +208,7 @@ export default function EditorPage() {
       setLeftWidth(newWidth)
     }
     if (isDraggingRight) {
-      const newWidth = Math.min(500, Math.max(200, window.innerWidth - e.clientX))
+      const newWidth = Math.min(700, Math.max(300, window.innerWidth - e.clientX))
       setRightWidth(newWidth)
     }
   }
@@ -287,12 +287,12 @@ export default function EditorPage() {
           <div className="editor-drag-handle-line" />
         </div>
 
-        {/* Middle: Editor */}
+        {/* Middle: Chat / AI Assistant */}
         <div className="editor-panel-center">
-          <MarkdownEditor />
+          <ChatPanel onArchive={() => setShowArchiveModal(true)} />
         </div>
 
-        {/* Right: Chat */}
+        {/* Right: Editor */}
         <div
           className="editor-drag-handle"
           onMouseDown={handleRightDragStart}
@@ -301,7 +301,7 @@ export default function EditorPage() {
           <div className="editor-drag-handle-line" />
         </div>
         <div className="editor-panel-right" style={{ width: rightWidth }}>
-          <ChatPanel onArchive={() => setShowArchiveModal(true)} />
+          <MarkdownEditor />
         </div>
       </div>
 
