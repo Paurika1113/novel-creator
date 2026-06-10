@@ -9,6 +9,9 @@ interface EditorStore {
   currentFilePath: string | null
   isFileTreeOpen: boolean
 
+  // 章节展开状态（与 filesByBook 在同一 store 中，确保原子更新）
+  expandedChapterPaths: string[]
+
   // 编辑器内容（不持久化，由 openFile 从 localStorage 或 filesByBook 加载）
   editorContent: string
   isDirty: boolean
@@ -21,6 +24,7 @@ interface EditorStore {
   setFiles: (files: KnowledgeFile[]) => void
   addFile: (file: KnowledgeFile) => void
   removeFile: (path: string) => void
+  toggleChapterExpand: (path: string) => void
 
   // 编辑器操作
   openFile: (filePath: string, content?: string) => void
@@ -40,6 +44,7 @@ export const useEditorStore = create<EditorStore>()(
       currentBookId: null,
       currentFilePath: null,
       isFileTreeOpen: true,
+      expandedChapterPaths: [],
       editorContent: '',
       isDirty: false,
       viewMode: 'source',
@@ -105,6 +110,19 @@ export const useEditorStore = create<EditorStore>()(
             },
             currentFilePath: isDeletingCurrent ? null : state.currentFilePath,
             editorContent: isDeletingCurrent ? '' : state.editorContent,
+            // 原子清理展开状态
+            expandedChapterPaths: state.expandedChapterPaths.filter((p) => p !== path),
+          }
+        })
+      },
+
+      toggleChapterExpand: (path) => {
+        set((state) => {
+          const exists = state.expandedChapterPaths.includes(path)
+          return {
+            expandedChapterPaths: exists
+              ? state.expandedChapterPaths.filter((p) => p !== path)
+              : [...state.expandedChapterPaths, path],
           }
         })
       },
@@ -166,6 +184,7 @@ export const useEditorStore = create<EditorStore>()(
         currentBookId: state.currentBookId,
         currentFilePath: state.currentFilePath,
         isFileTreeOpen: state.isFileTreeOpen,
+        expandedChapterPaths: state.expandedChapterPaths,
       }),
     }
   )

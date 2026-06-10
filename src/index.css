@@ -1025,7 +1025,7 @@ body {
   display: flex;
   align-items: center;
   gap: 0;
-  opacity: 0;
+  opacity: 0.4;
   transition: opacity 0.1s;
   flex-shrink: 0;
   margin-left: 2px;

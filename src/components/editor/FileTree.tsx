@@ -70,8 +70,9 @@ export default function FileTree() {
   const openFile = useEditorStore((s) => s.openFile)
   const setFiles = useEditorStore((s) => s.setFiles)
   const removeFile = useEditorStore((s) => s.removeFile)
+  const expandedChapterPaths = useEditorStore((s) => s.expandedChapterPaths)
+  const toggleChapterExpand = useEditorStore((s) => s.toggleChapterExpand)
 
-  const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set())
   const [renamingPath, setRenamingPath] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const renameInputRef = useRef<HTMLInputElement>(null)
@@ -82,15 +83,7 @@ export default function FileTree() {
   }, [filesByBook, currentBookId])
 
   function toggleChapter(path: string) {
-    setExpandedChapters((prev) => {
-      const next = new Set(prev)
-      if (next.has(path)) {
-        next.delete(path)
-      } else {
-        next.add(path)
-      }
-      return next
-    })
+    toggleChapterExpand(path)
   }
 
   function openFileOrSummary(filePath: string, content: string) {
@@ -129,13 +122,7 @@ export default function FileTree() {
     const label = file?.name || path.split('/').pop() || '文件'
     if (!confirm(`确认删除「${label}」？此操作不可撤销。`)) return
 
-    // 先清理 expandedChapters 中的引用，避免 React Fiber reconciliation 错位
-    setExpandedChapters((prev) => {
-      const next = new Set(prev)
-      next.delete(path)
-      return next
-    })
-
+    setRenamingPath(null)
     removeFile(path)
   }
 
@@ -199,7 +186,7 @@ export default function FileTree() {
               {sectionFiles.map((file) => {
                 const isActive = file.path === currentFilePath
                 const isChapter = file.type === 'chapter'
-                const isExpanded = expandedChapters.has(file.path)
+                const isExpanded = expandedChapterPaths.includes(file.path)
                 const isRenaming = renamingPath === file.path
 
                 if (isChapter) {
@@ -307,7 +294,7 @@ export default function FileTree() {
 
               {/* Empty state for chapters */}
               {section.key === 'chapters' && sectionFiles.length === 0 && (
-                <div className="file-tree-empty-row">
+                <div key="chapters-empty" className="file-tree-empty-row">
                   <span className="file-tree-empty-text">暂无章节</span>
                 </div>
               )}

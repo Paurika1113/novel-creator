@@ -9,6 +9,7 @@ import FileTree from '../components/editor/FileTree'
 import MarkdownEditor from '../components/editor/MarkdownEditor'
 import ChatPanel from '../components/editor/ChatPanel'
 import EditorStatusBar from '../components/editor/EditorStatusBar'
+import EditorErrorBoundary from '../components/editor/EditorErrorBoundary'
 import ArchiveModal from '../components/editor/ArchiveModal'
 
 function loadPersistedContent(bookId: string, path: string): string {
@@ -241,6 +242,7 @@ export default function EditorPage() {
       </div>
 
       {/* Three-column Body */}
+      <EditorErrorBoundary>
       <div className="editor-body">
         {/* Left: File Tree */}
         <div className="editor-panel-left" style={{ width: leftWidth }}>
@@ -271,6 +273,7 @@ export default function EditorPage() {
           <MarkdownEditor />
         </div>
       </div>
+      </EditorErrorBoundary>
 
       <EditorStatusBar />
 
