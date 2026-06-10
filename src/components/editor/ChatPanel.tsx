@@ -16,7 +16,16 @@ import type { LLMMessage } from '../../services/llm'
 // ---- 工具结果折叠状态 ----
 const toolCollapseState = new Map<string, Set<string>>() // msgKey -> set of toolIds
 
-// ---- Skill-based action buttons ----
+// ---- 斜杠命令系统 ----
+const SLASH_COMMANDS = [
+  { id: 'outline', icon: '📝', label: '生成大纲', prompt: '请为下一章生成详细章节大纲。先读取 master_outline.md 了解全书结构，然后生成 chapter_outline.md。' },
+  { id: 'write', icon: '➕', label: '写新章', prompt: '请根据 chapter_outline.md 中的大纲，撰写完整的章节正文草稿。使用 write_current_draft 写入。' },
+  { id: 'continue', icon: '✏️', label: '续写', prompt: '请读取当前草稿 chapter_draft.md，在末尾继续追加内容，保持叙事连贯。' },
+  { id: 'review', icon: '📋', label: '审核草稿', prompt: '请从世界观一致性、大纲匹配度、前文连续性、文风一致性和文本质量五个维度审核当前草稿，输出结构化审核报告。' },
+  { id: 'polish', icon: '🎨', label: '润色文风', prompt: '请读取当前草稿，从语言层、叙事层和结构层进行润色优化。完成后用 write_current_draft 覆盖原草稿。' },
+  { id: 'world', icon: '🌍', label: '世界观', prompt: '请读取已归档章节，提取和整理世界观设定，生成或更新 world_model.md。' },
+  { id: 'summarize', icon: '🔄', label: '摘要', prompt: '请读取已归档章节，重新生成章节摘要，更新 summary.md 和 status_card.md。' },
+]
 interface ActionButtonDef {
   id: string
   icon: string
@@ -619,6 +628,72 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
   const [, setExpandedTools] = useState<Map<string, Set<string>>>(new Map())
   const activeBook = currentBookId ? books.find((b) => b.id === currentBookId) : null
 
+  // ---- 斜杠命令 ----
+  const [showSlashMenu, setShowSlashMenu] = useState(false)
+  const [slashIndex, setSlashIndex] = useState(0)
+  const slashMenuRef = useRef<HTMLDivElement>(null)
+
+  // ---- ContextBar: 计算上下文状态 ----
+  const getContextBarInfo = useCallback(() => {
+    const totalTokens = settings.modelContextWindow || 200000
+    const chapterFiles = currentFiles.filter((f) => f.type === 'chapter')
+    const recentChapters = chapterFiles.slice(-3)
+    const recentContent = recentChapters.reduce((sum, f) => sum + f.content.length, 0)
+    const draftLen = draftContent.length || 0
+    const estimatedTokens = Math.round((recentContent + draftLen + 5000) * 1.2)
+    const percent = Math.min(Math.round((estimatedTokens / totalTokens) * 100), 99)
+    return { totalTokens, estimatedTokens, percent }
+  }, [currentFiles, draftContent, settings.modelContextWindow])
+
+  const [showContextBar, setShowContextBar] = useState(true)
+
+  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const val = e.target.value
+    setInput(val)
+    // 输入 / 时弹出斜杠命令菜单
+    if (val === '/') {
+      setShowSlashMenu(true)
+      setSlashIndex(0)
+    } else if (showSlashMenu && !val.startsWith('/')) {
+      setShowSlashMenu(false)
+    }
+  }
+
+  function selectSlashCommand(cmd: typeof SLASH_COMMANDS[0]) {
+    setInput(cmd.prompt)
+    setShowSlashMenu(false)
+    if (inputRef.current) inputRef.current.focus()
+  }
+
+  function handleSlashKeyDown(e: React.KeyboardEvent) {
+    if (!showSlashMenu) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setSlashIndex((prev) => (prev + 1) % SLASH_COMMANDS.length)
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setSlashIndex((prev) => (prev - 1 + SLASH_COMMANDS.length) % SLASH_COMMANDS.length)
+    } else if (e.key === 'Enter' && showSlashMenu) {
+      e.preventDefault()
+      selectSlashCommand(SLASH_COMMANDS[slashIndex])
+    } else if (e.key === 'Escape') {
+      setShowSlashMenu(false)
+    }
+  }
+
+  // 点击菜单外关闭
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (slashMenuRef.current && !slashMenuRef.current.contains(e.target as Node)) {
+        setShowSlashMenu(false)
+      }
+    }
+    if (showSlashMenu) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showSlashMenu])
+
   return (
     <div className="chat-panel">
       <div className="chat-messages">
@@ -655,6 +730,44 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       </div>
 
       <div className="chat-input-area">
+        {/* ---- ContextBar ---- */}
+        {showContextBar && (() => {
+          const ctx = getContextBarInfo()
+          return (
+            <div className="chat-context-bar" onClick={() => setShowContextBar(false)} title="点击隐藏">
+              <span className="chat-context-bar-label">📊 上下文</span>
+              <div className="chat-context-bar-track">
+                <div
+                  className="chat-context-bar-fill"
+                  style={{ width: `${ctx.percent}%` }}
+                />
+              </div>
+              <span className="chat-context-bar-text">
+                {ctx.estimatedTokens.toLocaleString()} / {ctx.totalTokens.toLocaleString()}
+                <span style={{ marginLeft: 4, opacity: 0.7 }}>({ctx.percent}%)</span>
+              </span>
+            </div>
+          )
+        })()}
+
+        {/* ---- Slash command menu ---- */}
+        {showSlashMenu && (
+          <div className="chat-slash-menu" ref={slashMenuRef}>
+            {SLASH_COMMANDS.map((cmd, i) => (
+              <div
+                key={cmd.id}
+                className={`chat-slash-item${i === slashIndex ? ' active' : ''}`}
+                onClick={() => selectSlashCommand(cmd)}
+                onMouseEnter={() => setSlashIndex(i)}
+              >
+                <span className="chat-slash-item-icon">{cmd.icon}</span>
+                <span className="chat-slash-item-label">{cmd.label}</span>
+                <span className="chat-slash-item-cmd">/{cmd.id}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Skill buttons + workflow actions */}
         <div className="chat-action-buttons">
           {workflow.phase !== 'idle' && workflow.phase !== 'archived' ? (
@@ -683,19 +796,25 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         </div>
 
         <div className="chat-input-row">
+          {showSlashMenu && (
+            <span className="chat-input-slash-indicator">/</span>
+          )}
           <input
             ref={inputRef}
             type="text"
             className="chat-input"
             placeholder={
-              workflow.phase === 'outline' ? '与 AI 讨论大纲，或输入修改指令...' :
-              workflow.phase === 'draft' ? '与 AI 讨论草稿，或输入修改指令...' :
+              workflow.phase === 'outline' ? '与 AI 讨论大纲，或输入 / 呼出命令...' :
+              workflow.phase === 'draft' ? '与 AI 讨论草稿，或输入 / 呼出命令...' :
               workflow.phase === 'review' ? '查看审核报告，或输入修改要求...' :
-              '输入指令，跟 AI 一起创作'
+              '输入 / 呼出命令，或直接跟 AI 对话'
             }
             value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
+            onChange={handleInputChange}
+            onKeyDown={(e) => {
+              handleSlashKeyDown(e)
+              if (!showSlashMenu) handleKeyDown(e)
+            }}
             disabled={isStreaming}
           />
           <button

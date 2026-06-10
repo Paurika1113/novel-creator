@@ -42,10 +42,10 @@ export default function MarkdownEditor() {
     currentFilePath,
     editorContent,
     isDirty,
-    isPreviewMode,
+    viewMode,
     updateContent,
     saveContent,
-    togglePreview,
+    setViewMode,
   } = useEditorStore()
 
   const workflow = useWorkflowStore()
@@ -53,6 +53,7 @@ export default function MarkdownEditor() {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const previewRef = useRef<HTMLDivElement>(null)
   const cursorRef = useRef<{ start: number; end: number } | null>(null)
 
   // Inline AI selection state
@@ -84,7 +85,6 @@ export default function MarkdownEditor() {
   }, [isDirty, saveContent])
 
   // Fire-and-forget: on draft save, trigger lightweight event analysis
-  // This runs in background and does not block the UI
   const prevDirtyRef = useRef(isDirty)
   useEffect(() => {
     const justSaved = prevDirtyRef.current === true && isDirty === false
@@ -99,7 +99,6 @@ export default function MarkdownEditor() {
     const threads = memoryStore.threads[editorStore.currentBookId] || []
     const currentChapterIndex = useWorkflowStore.getState().currentChapterNum || 1
 
-    // Fire and forget — don't block save
     analyzeDraftEvents(content, currentChapterIndex, threads, settings.apiKey, settings.provider, settings.baseUrl)
       .then((result) => {
         if (result.newThreads && result.newThreads.length > 0) {
@@ -109,7 +108,7 @@ export default function MarkdownEditor() {
       .catch(() => { /* silent */ })
   }, [isDirty])
 
-  // Restore cursor after content update from toolbar buttons
+  // Restore cursor after content update
   useEffect(() => {
     if (cursorRef.current && textareaRef.current) {
       textareaRef.current.setSelectionRange(cursorRef.current.start, cursorRef.current.end)
@@ -135,12 +134,20 @@ export default function MarkdownEditor() {
 
   // Focus textarea when file changes
   useEffect(() => {
-    if (textareaRef.current && !isPreviewMode) {
+    if (textareaRef.current && viewMode !== 'preview') {
       textareaRef.current.focus()
     }
-  }, [currentFilePath, isPreviewMode])
+  }, [currentFilePath, viewMode])
 
-  // Toolbar button handler: insert markdown around selection
+  // Sync scroll between source and preview in split mode
+  function handleSourceScroll() {
+    if (viewMode !== 'split' || !textareaRef.current || !previewRef.current) return
+    const src = textareaRef.current
+    const ratio = src.scrollTop / (src.scrollHeight - src.clientHeight)
+    const preview = previewRef.current
+    preview.scrollTop = ratio * (preview.scrollHeight - preview.clientHeight)
+  }
+
   function handleToolAction(before: string, after: string) {
     const ta = textareaRef.current
     if (!ta) return
@@ -153,7 +160,6 @@ export default function MarkdownEditor() {
     const newText =
       text.substring(0, start) + before + selected + after + text.substring(end)
 
-    // Save cursor position for restoration after re-render
     cursorRef.current = {
       start: start + before.length,
       end: start + before.length + selected.length,
@@ -162,7 +168,6 @@ export default function MarkdownEditor() {
     updateContent(newText)
   }
 
-  // Handle text selection for workflow rewrite + inline AI
   function handleSelectionChange() {
     const ta = textareaRef.current
     if (!ta) return
@@ -174,15 +179,13 @@ export default function MarkdownEditor() {
       setSelectedText(selected)
       workflow.setSelectedText(selected)
 
-      // Calculate position for inline action bar
       const textUpToCursor = ta.value.substring(0, start)
       const lines = textUpToCursor.split('\n')
       const lineNumber = lines.length
       const colNumber = lines[lines.length - 1].length
-      // Approximate position: each line ~18px height, with scroll offset
       const lineHeight = 18
       const scrollTop = ta.scrollTop
-      const top = (lineNumber - 1) * lineHeight - scrollTop + 30 // offset below toolbar
+      const top = (lineNumber - 1) * lineHeight - scrollTop + 30
       const left = Math.min(colNumber * 7.5, ta.offsetWidth - 320)
       setSelectionPos({ top: Math.max(top, 4), left: Math.max(left, 8) })
     } else {
@@ -191,7 +194,6 @@ export default function MarkdownEditor() {
     }
   }
 
-  // Send selected text to AI agent
   function handleInlineAction(action: typeof INLINE_ACTIONS[number]) {
     if (!selectedText) return
 
@@ -217,49 +219,19 @@ export default function MarkdownEditor() {
       {/* Toolbar */}
       <div className="editor-toolbar">
         <div className="editor-toolbar-group">
-          <button
-            className="editor-tool-btn"
-            title="粗体 Ctrl+B"
-            onClick={() => handleToolAction('**', '**')}
-          >
+          <button className="editor-tool-btn" title="粗体 Ctrl+B" onClick={() => handleToolAction('**', '**')}>
             <strong>B</strong>
           </button>
-          <button
-            className="editor-tool-btn"
-            title="斜体 Ctrl+I"
-            onClick={() => handleToolAction('*', '*')}
-          >
+          <button className="editor-tool-btn" title="斜体 Ctrl+I" onClick={() => handleToolAction('*', '*')}>
             <em>I</em>
           </button>
-          <button
-            className="editor-tool-btn"
-            title="下划线"
-            onClick={() => handleToolAction('<u>', '</u>')}
-          >
+          <button className="editor-tool-btn" title="下划线" onClick={() => handleToolAction('<u>', '</u>')}>
             <span style={{ textDecoration: 'underline' }}>U</span>
           </button>
           <span style={{ width: 1, height: 16, background: 'var(--border)', margin: '0 4px' }} />
-          <button
-            className="editor-tool-btn"
-            title="标题 (H2)"
-            onClick={() => handleToolAction('## ', '')}
-          >
-            H
-          </button>
-          <button
-            className="editor-tool-btn"
-            title="链接"
-            onClick={() => handleToolAction('[', '](url)')}
-          >
-            🔗
-          </button>
-          <button
-            className="editor-tool-btn"
-            title="图片"
-            onClick={() => handleToolAction('![alt](', ')')}
-          >
-            📷
-          </button>
+          <button className="editor-tool-btn" title="标题 (H2)" onClick={() => handleToolAction('## ', '')}>H</button>
+          <button className="editor-tool-btn" title="链接" onClick={() => handleToolAction('[', '](url)')}>🔗</button>
+          <button className="editor-tool-btn" title="图片" onClick={() => handleToolAction('![alt](', ')')}>📷</button>
         </div>
 
         <div className="editor-toolbar-group">
@@ -268,20 +240,23 @@ export default function MarkdownEditor() {
             {saveStatus === 'saving' && '保存中…'}
             {saveStatus === 'saved' && '✓ 已保存'}
           </span>
+          {/* View mode toggle: Source | Split | Preview */}
           <div className="editor-mode-toggle">
             <button
-              className={`editor-mode-btn${!isPreviewMode ? ' active' : ''}`}
-              onClick={() => {
-                if (isPreviewMode) togglePreview()
-              }}
+              className={`editor-mode-btn${viewMode === 'source' ? ' active' : ''}`}
+              onClick={() => setViewMode('source')}
             >
-              编辑
+              源码
             </button>
             <button
-              className={`editor-mode-btn${isPreviewMode ? ' active' : ''}`}
-              onClick={() => {
-                if (!isPreviewMode) togglePreview()
-              }}
+              className={`editor-mode-btn${viewMode === 'split' ? ' active' : ''}`}
+              onClick={() => setViewMode('split')}
+            >
+              分屏
+            </button>
+            <button
+              className={`editor-mode-btn${viewMode === 'preview' ? ' active' : ''}`}
+              onClick={() => setViewMode('preview')}
             >
               预览
             </button>
@@ -290,9 +265,9 @@ export default function MarkdownEditor() {
       </div>
 
       {/* Content */}
-      <div className="editor-content">
+      <div className={`editor-content${viewMode === 'split' ? ' split-mode' : ''}`}>
         {/* Inline AI action bar */}
-        {selectedText && selectionPos && !isPreviewMode && (
+        {selectedText && selectionPos && viewMode !== 'preview' && (
           <div
             className="editor-inline-actions"
             style={{
@@ -313,12 +288,9 @@ export default function MarkdownEditor() {
             ))}
           </div>
         )}
-        {isPreviewMode ? (
-          <div
-            className="editor-preview"
-            dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
-          />
-        ) : (
+
+        {/* Source: textarea only */}
+        {viewMode === 'source' && (
           <textarea
             ref={textareaRef}
             className="editor-textarea"
@@ -330,10 +302,42 @@ export default function MarkdownEditor() {
             placeholder={
               workflow.phase === 'outline' ? 'AI 生成的大纲将显示在这里，你可以直接编辑...' :
               workflow.phase === 'draft' ? 'AI 生成的草稿将显示在这里，你可以直接编辑...' :
-              workflow.phase === 'review' ? '审核中，请查看右侧聊天窗口的审核报告...' :
+              workflow.phase === 'review' ? '审核中，请查看聊天窗口的审核报告...' :
               '开始写作…'
             }
             spellCheck
+          />
+        )}
+
+        {/* Split: textarea + preview side by side */}
+        {viewMode === 'split' && (
+          <>
+            <textarea
+              ref={textareaRef}
+              className="editor-textarea editor-split-source"
+              value={editorContent}
+              onChange={(e) => updateContent(e.target.value)}
+              onKeyDown={handleKeyDown}
+              onSelect={handleSelectionChange}
+              onMouseUp={handleSelectionChange}
+              onScroll={handleSourceScroll}
+              placeholder="编辑源码…"
+              spellCheck
+            />
+            <div className="editor-split-divider" />
+            <div
+              ref={previewRef}
+              className="editor-preview editor-split-preview"
+              dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
+            />
+          </>
+        )}
+
+        {/* Preview: full rendered */}
+        {viewMode === 'preview' && (
+          <div
+            className="editor-preview"
+            dangerouslySetInnerHTML={{ __html: renderMarkdown(editorContent) }}
           />
         )}
       </div>

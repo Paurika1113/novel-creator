@@ -8,6 +8,7 @@ import { clearSystemPromptCache } from '../services/skills'
 import FileTree from '../components/editor/FileTree'
 import MarkdownEditor from '../components/editor/MarkdownEditor'
 import ChatPanel from '../components/editor/ChatPanel'
+import EditorStatusBar from '../components/editor/EditorStatusBar'
 import ArchiveModal from '../components/editor/ArchiveModal'
 
 function loadPersistedContent(bookId: string, path: string): string {
@@ -304,6 +305,8 @@ export default function EditorPage() {
           <MarkdownEditor />
         </div>
       </div>
+
+      <EditorStatusBar />
 
       {/* Archive Modal */}
       <ArchiveModal open={showArchiveModal} onClose={() => setShowArchiveModal(false)} />

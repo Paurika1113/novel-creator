@@ -12,7 +12,7 @@ interface EditorStore {
   // 编辑器内容（不持久化，由 openFile 从 localStorage 或 filesByBook 加载）
   editorContent: string
   isDirty: boolean
-  isPreviewMode: boolean
+  viewMode: 'source' | 'split' | 'preview'
 
   // 书籍切换
   setCurrentBook: (bookId: string | null) => void
@@ -26,7 +26,7 @@ interface EditorStore {
   openFile: (filePath: string, content?: string) => void
   updateContent: (content: string) => void
   saveContent: () => void
-  togglePreview: () => void
+  setViewMode: (mode: 'source' | 'split' | 'preview') => void
   toggleFileTree: () => void
 
   // 获取当前书籍的文件列表
@@ -42,7 +42,7 @@ export const useEditorStore = create<EditorStore>()(
       isFileTreeOpen: true,
       editorContent: '',
       isDirty: false,
-      isPreviewMode: false,
+      viewMode: 'source',
 
       setCurrentBook: (bookId) => {
         set({
@@ -50,7 +50,7 @@ export const useEditorStore = create<EditorStore>()(
           currentFilePath: null,
           editorContent: '',
           isDirty: false,
-          isPreviewMode: false,
+          viewMode: 'source',
         })
       },
 
@@ -125,7 +125,7 @@ export const useEditorStore = create<EditorStore>()(
           currentFilePath: filePath,
           editorContent: resolvedContent,
           isDirty: false,
-          isPreviewMode: false,
+          viewMode: 'source',
         })
       },
 
@@ -148,8 +148,8 @@ export const useEditorStore = create<EditorStore>()(
         set({ isDirty: false })
       },
 
-      togglePreview: () => {
-        set((state) => ({ isPreviewMode: !state.isPreviewMode }))
+      setViewMode: (mode) => {
+        set({ viewMode: mode })
       },
 
       toggleFileTree: () => {
