@@ -1492,70 +1492,19 @@ body {
   margin-right: 4px;
 }
 
-/* ---- 可折叠工具结果 ---- */
-.chat-tool-result {
-  margin: 6px 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  animation: messageIn 0.15s ease;
-}
-.chat-tool-result-header {
+/* ---- 工具调用迷你行（无内容，仅一行提示） ---- */
+.chat-tool-mini-line {
+  align-self: flex-start;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 10px;
-  background: #f8f7fc;
-  cursor: pointer;
-  user-select: none;
-  font-size: 12px;
-  transition: background 0.12s;
-}
-.chat-tool-result-header:hover {
-  background: #f0edfa;
-}
-.chat-tool-result-caret {
-  font-size: 10px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  width: 12px;
-  text-align: center;
-}
-.chat-tool-result-icon {
-  font-size: 13px;
-  flex-shrink: 0;
-}
-.chat-tool-result-name {
-  font-weight: 600;
-  color: var(--primary);
-  flex-shrink: 0;
-}
-.chat-tool-result-preview {
-  color: var(--text-muted);
+  gap: 4px;
   font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-  margin-left: 4px;
-}
-.chat-tool-result-body {
-  padding: 8px 12px;
-  background: var(--bg-card);
-  border-top: 1px solid var(--border);
-  font-size: 11px;
-  line-height: 1.5;
-  max-height: 300px;
-  overflow-y: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  color: var(--text-secondary);
-}
-.chat-tool-result-body p {
+  color: var(--text-muted);
+  padding: 1px 12px 1px 12px;
   margin: 0;
-  font-size: 11px;
-  line-height: 1.5;
+  line-height: 1;
+  user-select: none;
+  animation: messageIn 0.15s ease;
 }
 
 /* Action Buttons */

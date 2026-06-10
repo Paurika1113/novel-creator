@@ -13,9 +13,6 @@ import { buildMemoryContext } from '../../services/memoryContext'
 import type { ChatMessage, SkillDef, SKILLS } from '../../types'
 import type { LLMMessage } from '../../services/llm'
 
-// ---- 工具结果折叠状态 ----
-const toolCollapseState = new Map<string, Set<string>>() // msgKey -> set of toolIds
-
 // ---- 斜杠命令系统 ----
 const SLASH_COMMANDS = [
   { id: 'outline', icon: '📝', label: '生成大纲', prompt: '请为下一章生成详细大纲。先读取 status_card.md 和 master_outline.md 了解全书结构。每个章节有专属的 {chapters/N.outline.md} 文件，请使用 write_knowledge_file 工具写入对应章节的纲要文件。章纲格式：章节标题、场景设定、出场人物、情节节点、悬念铺设。' },
@@ -558,24 +555,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     }
   }
 
-  // ---- Tool collapse ----
-  const toggleTool = useCallback((msgKey: string, toolId: string) => {
-    if (!toolCollapseState.has(msgKey)) {
-      toolCollapseState.set(msgKey, new Set())
-    }
-    const set = toolCollapseState.get(msgKey)!
-    if (set.has(toolId)) {
-      set.delete(toolId)
-    } else {
-      set.add(toolId)
-    }
-    setExpandedTools((prev) => {
-      const next = new Map(prev)
-      next.set(msgKey, new Set(set))
-      return next
-    })
-  }, [])
-
   function renderTextLines(text: string) {
     const lines = text.split('\n')
     return lines.map((line, i) => {
@@ -588,51 +567,33 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     })
   }
 
-  function renderMessageContent(content: string, msgIndex: number) {
-    const msgKey = `${msgIndex}`
-    const expandedSet = toolCollapseState.get(msgKey) || new Set<string>()
+  /**
+   * 解析消息内容，按 <!--TOOL:...--> 标记拆分为片段
+   * 工具片段不包含具体内容 —— 只标识「使用了 XX 工具」
+   */
+  function parseMessageSegments(content: string): Array<{ type: 'text' | 'tool'; content?: string; toolName?: string }> {
     const toolRegex = /<!--TOOL:([^:]+):([^:]+):([^-]+)-->\n([\s\S]*?)\n<!--TOOL_END:\2-->/g
-
-    const segments: Array<{ type: 'text' | 'tool'; content?: string; toolName?: string; toolId?: string }> = []
+    const segments: Array<{ type: 'text' | 'tool'; content?: string; toolName?: string }> = []
     let lastIdx = 0
     let match: RegExpExecArray | null
     while ((match = toolRegex.exec(content)) !== null) {
       if (match.index > lastIdx) {
-        segments.push({ type: 'text', content: content.slice(lastIdx, match.index) })
+        const text = content.slice(lastIdx, match.index).trim()
+        if (text) segments.push({ type: 'text', content: text })
       }
-      segments.push({ type: 'tool', content: match[4], toolName: match[1], toolId: match[2] })
+      segments.push({ type: 'tool', toolName: match[1] })
       lastIdx = match.index + match[0].length
     }
     if (lastIdx < content.length) {
-      segments.push({ type: 'text', content: content.slice(lastIdx) })
+      const text = content.slice(lastIdx).trim()
+      if (text) segments.push({ type: 'text', content: text })
     }
-
-    if (segments.length === 0) return renderTextLines(content)
-
-    return segments.map((seg, i) => {
-      if (seg.type === 'tool') {
-        const isExpanded = expandedSet.has(seg.toolId!)
-        const toolName = seg.toolName!
-        const toolContent = seg.content || ''
-        const firstLine = toolContent.split('\n')[0]?.trim().slice(0, 80) || ''
-        return (
-          <div key={i} className="chat-tool-result">
-            <div className="chat-tool-result-header" onClick={() => toggleTool(msgKey, seg.toolId!)} title="点击展开/折叠">
-              <span className="chat-tool-result-caret">{isExpanded ? '▼' : '▶'}</span>
-              <span className="chat-tool-result-icon">🔧</span>
-              <span className="chat-tool-result-name">{toolName}</span>
-              {!isExpanded && firstLine && <span className="chat-tool-result-preview">{firstLine}</span>}
-            </div>
-            {isExpanded && <div className="chat-tool-result-body">{renderTextLines(toolContent)}</div>}
-          </div>
-        )
-      }
-      if (!seg.content?.trim()) return null
-      return <div key={i}>{renderTextLines(seg.content!)}</div>
-    })
+    if (segments.length === 0 && content.trim()) {
+      segments.push({ type: 'text', content: content.trim() })
+    }
+    return segments
   }
 
-  const [, setExpandedTools] = useState<Map<string, Set<string>>>(new Map())
   const activeBook = currentBookId ? books.find((b) => b.id === currentBookId) : null
 
   // ---- 斜杠命令 ----
@@ -717,21 +678,59 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           </div>
         )}
 
-        {messages.map((msg, index) => (
-          <div key={index} className={`chat-message ${msg.role === 'user' ? 'user' : 'assistant'}`}>
-            <div className="chat-message-avatar">{msg.role === 'user' ? '👤' : '🤖'}</div>
-            <div className="chat-message-content">{renderMessageContent(msg.content, index)}</div>
-          </div>
-        ))}
+        {messages.map((msg, index) => {
+          const segments = parseMessageSegments(msg.content)
+          const role = msg.role === 'user' ? 'user' : 'assistant'
+          // 用户消息不拆，始终一个气泡
+          if (msg.role === 'user') {
+            return (
+              <div key={index} className="chat-message user">
+                <div className="chat-message-avatar">👤</div>
+                <div className="chat-message-content">{renderTextLines(msg.content)}</div>
+              </div>
+            )
+          }
+          // AI 消息按工具标记拆分为多个气泡和工具行
+          return segments.map((seg, si) => {
+            if (seg.type === 'tool') {
+              return (
+                <div key={`${index}-${si}`} className="chat-tool-mini-line">
+                  🔧 使用了 {seg.toolName}
+                </div>
+              )
+            }
+            return (
+              <div key={`${index}-${si}`} className="chat-message assistant">
+                <div className="chat-message-avatar">🤖</div>
+                <div className="chat-message-content">{renderTextLines(seg.content || '')}</div>
+              </div>
+            )
+          })
+        })}
 
-        {isStreaming && (
-          <div className="chat-message assistant">
-            <div className="chat-message-avatar">🤖</div>
-            <div className="chat-message-content">
-              <span className="chat-message-cursor">▊</span>
-            </div>
-          </div>
-        )}
+        {isStreaming && (() => {
+          const streamMsg = messages.find((m) => m.id === streamingMessageId)
+          const streamContent = streamMsg?.content || ''
+          const segments = parseMessageSegments(streamContent)
+          return segments.map((seg, si) => {
+            if (seg.type === 'tool') {
+              return (
+                <div key={`s-${si}`} className="chat-tool-mini-line">
+                  🔧 使用了 {seg.toolName}
+                </div>
+              )
+            }
+            return (
+              <div key={`s-${si}`} className="chat-message assistant">
+                <div className="chat-message-avatar">🤖</div>
+                <div className="chat-message-content">
+                  {renderTextLines(seg.content || '')}
+                  {si === segments.length - 1 && seg.type === 'text' && <span className="chat-message-cursor">▊</span>}
+                </div>
+              </div>
+            )
+          })
+        })()}
 
         <div ref={messagesEndRef} />
       </div>
