@@ -105,20 +105,45 @@ ${input.chapterContent.slice(0, 6000)}
 /**
  * 从 LLM 返回的文本中提取 JSON
  * 支持 markdown 代码块包裹和普通 JSON 文本
+ * 使用平衡括号匹配, 避免贪婪正则跨多个 JSON 块错误匹配
  */
 function extractJsonFromText(text: string): string | null {
   // 先尝试匹配 markdown 代码块
   const codeBlockMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/)
   if (codeBlockMatch) {
-    return codeBlockMatch[1].trim()
+    const inner = codeBlockMatch[1].trim()
+    return extractBalancedJson(inner)
   }
 
-  // 再尝试匹配最外层的大括号
-  const braceMatch = text.match(/\{[\s\S]*\}/)
-  if (braceMatch) {
-    return braceMatch[0]
-  }
+  // 使用平衡大括号匹配, 避免贪婪正则误匹配多个 JSON 块
+  return extractBalancedJson(text)
+}
 
+/**
+ * 从文本中提取第一个平衡的大括号 JSON 块
+ */
+function extractBalancedJson(text: string): string | null {
+  const startIdx = text.indexOf('{')
+  if (startIdx === -1) return null
+
+  let depth = 0
+  let inString = false
+  let esc = false
+
+  for (let i = startIdx; i < text.length; i++) {
+    const ch = text[i]
+    if (esc) { esc = false; continue }
+    if (ch === '\\') { esc = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{') { depth++ }
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) {
+        return text.slice(startIdx, i + 1)
+      }
+    }
+  }
   return null
 }
 
@@ -226,10 +251,10 @@ ${draftContent.slice(0, 3000)}`
       { provider, apiKey, baseUrl },
     )
 
-    const jsonMatch = response.match(/\{[\s\S]*\}/)
+    const jsonMatch = extractBalancedJson(response)
     if (!jsonMatch) return { newThreads: [] }
 
-    const data = JSON.parse(jsonMatch[0])
+    const data = JSON.parse(jsonMatch)
     const newThreads: string[] = data.newThreadHints || []
 
     return {

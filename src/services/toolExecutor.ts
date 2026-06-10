@@ -225,12 +225,15 @@ function readCurrentDraft(): string {
 function isPlaceholderText(text: string): boolean {
   const trimmed = text.trim()
   // 太短 → 明显不是正文
-  if (trimmed.length < 30) return true
-  // 匹配常见占位模式
+  if (trimmed.length < 50) return true
+  // 匹配常见占位模式（整段文字匹配）
   const placeholderPatterns = [
-    /^[（(]?\s*(正文|内容|草稿|以上|如上|同上|参见|请见|详见|参考)[\s\S]{0,20}[）)]?\s*$/,
-    /^(正文内容如上|内容如上所示|正文如上|请参阅上文|参见上文|已在上方输出|已在聊天中输出)/,
-    /^[（(][^)）]{0,15}[）)]\s*$/,
+    // 纯括号包裹的占位描述
+    /^[（(]\s*(正文|内容|草稿|如上|参见|请见|详见)[\s\S]{0,30}[）)]\s*$/,
+    // 以占位短语开头的单行描述（不允许后面有真实段落）
+    /^(正文内容如上|内容如上所示|正文如上|请参阅上文|参见上文|已在上方输出|已在聊天中输出)(?![\s\S]{20,})/,
+    // 完全由引用指示语组成的文本
+    /^(如上所述|同上|详见上文|以下同上|内容同前)[\s\S]{0,10}$/,
   ]
   return placeholderPatterns.some((p) => p.test(trimmed))
 }

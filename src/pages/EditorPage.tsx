@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useBookStore } from '../stores/bookStore'
 import { useEditorStore } from '../stores/editorStore'
 import { useSettingsStore } from '../stores/settingsStore'
@@ -119,6 +119,12 @@ export default function EditorPage() {
   const [rightWidth, setRightWidth] = useState(storedRight ? Number(storedRight) : 340)
   const [isDraggingLeft, setIsDraggingLeft] = useState(false)
   const [isDraggingRight, setIsDraggingRight] = useState(false)
+
+  // Refs for drag handlers, avoid stale closure
+  const leftWidthRef = useRef(leftWidth)
+  const rightWidthRef = useRef(rightWidth)
+  leftWidthRef.current = leftWidth
+  rightWidthRef.current = rightWidth
   const { settings } = useSettingsStore()
 
   const [showArchiveModal, setShowArchiveModal] = useState(false)
@@ -155,9 +161,9 @@ export default function EditorPage() {
     const defaultFiles = generateDefaultFiles(book.title, book.chapterCount, book.id)
 
     if (files.length === 0) {
-      // 完全新建：使用默认文件列表
-      setFiles(defaultFiles)
+      // 完全新建：批量设置文件并打开首个知识文件, 避免双次渲染
       const firstKnowledge = defaultFiles.find((f) => f.type === 'master_outline')
+      setFiles(defaultFiles)
       if (firstKnowledge) {
         openFile(firstKnowledge.path, firstKnowledge.content)
       }
@@ -210,11 +216,11 @@ export default function EditorPage() {
   function handleMouseUp() {
     if (isDraggingLeft) {
       setIsDraggingLeft(false)
-      localStorage.setItem('nc:panelLeftWidth', String(leftWidth))
+      localStorage.setItem('nc:panelLeftWidth', String(leftWidthRef.current))
     }
     if (isDraggingRight) {
       setIsDraggingRight(false)
-      localStorage.setItem('nc:panelRightWidth', String(rightWidth))
+      localStorage.setItem('nc:panelRightWidth', String(rightWidthRef.current))
     }
   }
 
