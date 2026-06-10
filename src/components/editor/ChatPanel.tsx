@@ -571,7 +571,21 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
     const lines = text.split('\n')
     return lines.map((line, i) => {
       if (line.trim() === '') return <div key={i} style={{ height: 8 }} />
-      return <p key={i} className="chat-message-paragraph">{line}</p>
+      // 剥离 Markdown 符号，只显示纯文字
+      let display = line
+        .replace(/^#{1,6}\s+/, '')       // # 标题标记
+        .replace(/^-\s+/, '')              // - 列表标记
+        .replace(/^\*\s+/, '')            // * 列表标记
+        .replace(/^\d+\.\s+/, '')          // 1. 序号列表
+        .replace(/^>\s?/, '')              // > 引用标记
+        .replace(/\*\*(.+?)\*\*/gs, '$1') // **加粗**
+        .replace(/\*(.+?)\*/gs, '$1')     // *斜体*
+        .replace(/`{1,3}[^`]*`{1,3}/g, (m) => m.replace(/`/g, '')) // 代码标记
+        .trim()
+      // 隐藏表格分隔线（|---| 和 |:---|---:| 等）
+      if (/^\|[-|: ]+\|$/.test(display)) return null
+      if (!display) return <div key={i} style={{ height: 4 }} />
+      return <p key={i} className="chat-message-paragraph">{display}</p>
     })
   }
 
