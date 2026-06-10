@@ -332,10 +332,16 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
       let tagClosed = false
       let toolExecuted = false
 
+      // 强制 React 刷新挂起渲染（React 18 自动批处理会合并流式更新）
+      function flushPendingRender() {
+        return new Promise<void>((resolve) => setTimeout(resolve, 0))
+      }
+
       for await (const delta of stream) {
         if (delta.type === 'error') {
           chatContent += `\n❌ ${delta.error}`
           updateMessageContent(msgId, chatContent)
+          await flushPendingRender()
           break
         }
         if ((delta.type === 'delta' || delta.type === 'content') && delta.content) {
@@ -347,6 +353,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
             if (beforeTag) {
               chatContent += beforeTag
               updateMessageContent(msgId, chatContent)
+              await flushPendingRender()
             }
             chunk = chunk.replace(/.*<Main text>/s, '')
             if (!chunk) continue
@@ -360,10 +367,12 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
             tagClosed = true
             chatContent += '\n\n[正文已写入 chapter_draft.md]\n\n'
             updateMessageContent(msgId, chatContent)
+            await flushPendingRender()
             const afterTag = chunk.replace(/[\s\S]*?<\/Main text>/s, '')
             if (afterTag) {
               chatContent += afterTag
               updateMessageContent(msgId, chatContent)
+              await flushPendingRender()
             }
             continue
           }
@@ -372,6 +381,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           } else {
             chatContent += chunk
             updateMessageContent(msgId, chatContent)
+            await flushPendingRender()
           }
 
           if (!toolExecuted) {
@@ -386,11 +396,13 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           const toolId = `t${toolCallIndex++}`
           chatContent += `\n\n<!--TOOL:${delta.toolName}:${toolId}:${msgId}-->\n${delta.toolResult}\n<!--TOOL_END:${toolId}-->\n\n`
           updateMessageContent(msgId, chatContent)
+          await flushPendingRender()
         }
         if (delta.type === 'tool_loop_continue') {
           if (toolCallIndex > 0) {
             chatContent += '\n\n'
             updateMessageContent(msgId, chatContent)
+            await flushPendingRender()
           }
         }
       }
