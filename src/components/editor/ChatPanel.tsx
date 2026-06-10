@@ -570,10 +570,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
   function renderTextLines(text: string) {
     const lines = text.split('\n')
     return lines.map((line, i) => {
-      if (line.startsWith('# ')) return <h3 key={i} className="chat-message-heading">{line.slice(2)}</h3>
-      if (line.startsWith('## ')) return <h4 key={i} className="chat-message-heading">{line.slice(3)}</h4>
-      if (line.startsWith('- ')) return <li key={i} className="chat-message-list-item">{line.slice(2)}</li>
-      if (line.startsWith('> ')) return <blockquote key={i} className="chat-message-quote">{line.slice(2)}</blockquote>
       if (line.trim() === '') return <div key={i} style={{ height: 8 }} />
       return <p key={i} className="chat-message-paragraph">{line}</p>
     })
