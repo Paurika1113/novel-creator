@@ -284,6 +284,32 @@ function readChapter(index: number): string {
   return `## ${chapter.name}\n\n${chapter.content || '（内容为空）'}`
 }
 
+/**
+ * 若路径为 chapters/NNN.outline.md 且对应的 chapters/NNN.md 不存在，
+ * 自动创建空章节占位文件，使其在章节区可见
+ */
+function ensureChapterPlaceholderExists(path: string): void {
+  if (!path.match(/^chapters\/\d+\.outline\.md$/)) return
+  const chapterPath = path.replace(/\.outline\.md$/, '.md')
+  const store = useEditorStore.getState()
+  const bookId = store.currentBookId
+  if (!bookId) return
+  const currentFiles = store.filesByBook[bookId] || []
+  if (currentFiles.some((f) => f.path === chapterPath)) return
+  const chNum = chapterPath.match(/chapters\/(\d+)\.md$/)?.[1] || ''
+  const newFile: KnowledgeFile = {
+    name: `第${chNum}章`,
+    path: chapterPath,
+    type: 'chapter',
+    content: `# 第${chNum}章\n\n`,
+    updatedAt: new Date().toISOString(),
+  }
+  store.setFiles([...currentFiles, newFile])
+  try {
+    localStorage.setItem(`nc:${bookId}:${chapterPath}`, newFile.content)
+  } catch { /* ignore */ }
+}
+
 function writeKnowledgeFile(fileName: string, content: string): string {
   const extracted = extractMainText(content)
   // fileName 含 "/" 时视为完整路径，否则自动补 knowledge/ 前缀
@@ -319,15 +345,17 @@ function writeKnowledgeFile(fileName: string, content: string): string {
       if (cur.currentFilePath === file.path) {
         useEditorStore.setState({ editorContent: extracted, isDirty: false })
       }
+      ensureChapterPlaceholderExists(file.path)
       return `✅ 文件 "${fileName}" 已更新（类型已修正）。正文长度：${extracted.length} 字符。`
     }
     updateFile(file.path, extracted, file.type)
+    ensureChapterPlaceholderExists(file.path)
   } else {
     const path = isFullPath ? fileName : `knowledge/${fileName}`
 
     // 根据路径模式推断 fileType
     let fileType: string = 'other'
-    if (path.match(/\.outline\.md$/)) fileType = 'chapter_outline'
+    if (path.match(/^chapters\/\d+\.outline\.md$/)) fileType = 'chapter_outline'
     else if (path.startsWith('drafts/')) fileType = 'chapter_draft'
     else if (path.match(/^chapters\/\d+\.md$/)) fileType = 'chapter'
 
@@ -342,7 +370,8 @@ function writeKnowledgeFile(fileName: string, content: string): string {
         content: extracted,
         updatedAt: new Date().toISOString(),
       }
-      store.setFiles([...currentFiles, newFile])
+      const result: KnowledgeFile[] = [...currentFiles, newFile]
+      store.setFiles(result)
       try {
         localStorage.setItem(`nc:${bookId}:${path}`, extracted)
       } catch (e) {
@@ -353,6 +382,8 @@ function writeKnowledgeFile(fileName: string, content: string): string {
       if (currentState.currentFilePath === path) {
         useEditorStore.setState({ editorContent: extracted, isDirty: false })
       }
+      // 同步创建对应章节文件并持久化
+      ensureChapterPlaceholderExists(path)
       return `✅ 文件 "${path}" 已创建。正文长度：${extracted.length} 字符。`
     }
   }
