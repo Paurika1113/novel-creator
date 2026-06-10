@@ -332,6 +332,74 @@ function writeKnowledgeFile(fileName: string, content: string): string {
   return `✅ 知识文件 "${fileName}" 已更新。正文长度：${extracted.length} 字符。`
 }
 
+/**
+ * 直接写入章节正文文件 chapters/NNN.md
+ * 使用严格模式（需要 <Main text> 标签），内容会被注入对应的章节文件
+ */
+function writeChapterContent(chapterIndex: number, content: string): string {
+  const path = `chapters/${String(chapterIndex).padStart(3, '0')}.md`
+
+  // 严格模式：必须包含 <Main text> 标签
+  const extracted = extractMainText(content, true)
+  if (!extracted || !extracted.trim()) {
+    return '❌ 写入失败：content 参数中必须包含 <Main text> 和 </Main text> 标签，只有标签内的纯正文才会被写入。'
+  }
+  // 检测占位文字
+  if (isPlaceholderText(extracted)) {
+    return `❌ 写入失败：检测到占位文字（"${extracted.slice(0, 50)}..."），而非完整正文。请在 <Main text> 标签内放入**完整的小说正文**。`
+  }
+
+  const store = useEditorStore.getState()
+  const bookId = store.currentBookId
+  if (!bookId) return '❌ 写入失败：未选中任何作品。'
+
+  const currentFiles = store.filesByBook[bookId] || []
+  const existing = currentFiles.find((f) => f.path === path)
+
+  let name = `第${chapterIndex}章`
+  // 查找对应章节的纲要文件，尝试从中提取标题
+  const outlinePath = `chapters/${String(chapterIndex).padStart(3, '0')}.outline.md`
+  const outlineFile = currentFiles.find((f) => f.path === outlinePath)
+  if (outlineFile) {
+    name = outlineFile.name.replace(/·纲要$/, '')
+  }
+
+  const now = new Date().toISOString()
+  let updatedFiles: KnowledgeFile[]
+
+  if (existing) {
+    // 更新已有章节
+    updatedFiles = [...currentFiles]
+    const idx = currentFiles.indexOf(existing)
+    updatedFiles[idx] = { ...existing, content: extracted, updatedAt: now }
+  } else {
+    // 创建新章节文件
+    const newFile: KnowledgeFile = {
+      name,
+      path,
+      type: 'chapter',
+      content: extracted,
+      updatedAt: now,
+    }
+    updatedFiles = [...currentFiles, newFile]
+  }
+
+  store.setFiles(updatedFiles)
+  try {
+    localStorage.setItem(`nc:${bookId}:${path}`, extracted)
+  } catch (e) {
+    console.warn('Failed to persist file content:', e)
+  }
+
+  // 如果编辑器正好打开此文件，刷新内容
+  const currentState = useEditorStore.getState()
+  if (currentState.currentFilePath === path) {
+    useEditorStore.setState({ editorContent: extracted, isDirty: false })
+  }
+
+  return `✅ 第${chapterIndex}章正文已直接写入 ${path}。正文长度：${extracted.length} 字符。不需要再归档。`
+}
+
 // ========================================
 // 工具注册（模块加载时自动注册）
 // ========================================
@@ -369,4 +437,9 @@ registerTool('read_chapter', {
 registerTool('write_knowledge_file', {
   execute: (args) => writeKnowledgeFile(args.fileName as string, args.content as string),
   description: '写入知识文件',
+})
+
+registerTool('write_chapter_content', {
+  execute: (args) => writeChapterContent(Number(args.chapterIndex), args.content as string),
+  description: '直接写入章节正文到 chapters/NNN.md',
 })

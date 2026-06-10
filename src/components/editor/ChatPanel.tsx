@@ -19,7 +19,7 @@ const toolCollapseState = new Map<string, Set<string>>() // msgKey -> set of too
 // ---- 斜杠命令系统 ----
 const SLASH_COMMANDS = [
   { id: 'outline', icon: '📝', label: '生成大纲', prompt: '请为下一章生成详细大纲。先读取 status_card.md 和 master_outline.md 了解全书结构。每个章节有专属的 {chapters/N.outline.md} 文件，请使用 write_knowledge_file 工具写入对应章节的纲要文件。章纲格式：章节标题、场景设定、出场人物、情节节点、悬念铺设。' },
-  { id: 'write', icon: '➕', label: '写新章', prompt: '请根据 chapters/{编号}.outline.md 对应章节的纲要，撰写完整的章节正文草稿。使用 write_current_draft 写入。' },
+  { id: 'write', icon: '➕', label: '写新章', prompt: '请先调用 list_chapters 确认章节编号，再读取对应 chapters/{编号}.outline.md 的纲要，最后调用 write_chapter_content 直接写入 chapters/{编号}.md。不要使用 write_current_draft。' },
   { id: 'continue', icon: '✏️', label: '续写', prompt: '请读取当前草稿 chapter_draft.md，在末尾继续追加内容，保持叙事连贯。' },
   { id: 'review', icon: '📋', label: '审核草稿', prompt: '请从世界观一致性、大纲匹配度、前文连续性、文风一致性和文本质量五个维度审核当前草稿，输出结构化审核报告。' },
   { id: 'polish', icon: '🎨', label: '润色文风', prompt: '请读取当前草稿，从语言层、叙事层和结构层进行润色优化。完成后用 write_current_draft 覆盖原草稿。' },
@@ -64,7 +64,11 @@ function getActionButtons(
 **重要**：
 - 只生成章纲，不要生成草稿
 - 章纲生成后，用户会在聊天窗口与你讨论确认
+- 讨论结束后，用户会点击"生成草稿"按钮让你用 write_chapter_content 写入正文
 - 你正在创作的是第${nextChapterNum}章，不是第${chapterIndex}章`,
+
+
+
       },
       {
         id: 'rewrite_chapter',
@@ -126,17 +130,18 @@ function getActionButtons(
         icon: '📝',
         label: '生成草稿',
         skill: 'write_chapter',
-        prompt: `请根据当前章节大纲，撰写完整的章节正文草稿。
+        prompt: `请根据当前章节大纲，撰写完整的章节正文。
 
 **执行步骤**：
 1. 读取当前章节的纲要文件（${currentFilePath}）获取详细大纲
 2. 读取最近一章（第${chNum}章）的结尾内容，保持连续性
-3. 使用 write_current_draft 撰写本章的完整正文草稿
+3. 使用 write_chapter_content (chapterIndex=${chNum}) 直接写入 chapters/${String(chNum).padStart(3, '0')}.md
 
 **要求**：
 - 严格遵循大纲中的场景设定、人物出场和情节推进
 - 每章 2000-5000 字
-- 结尾保持悬念或推进感`,
+- 结尾保持悬念或推进感
+- 不要使用 write_current_draft，用 write_chapter_content 直接写入章节文件`,
       },
       {
         id: 'modify_outline',

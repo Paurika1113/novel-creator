@@ -47,7 +47,7 @@ const TOOL_WRITE_DRAFT: ToolDefinition = {
   type: 'function',
   function: {
     name: 'write_current_draft',
-    description: '将完整的章节正文草稿写入 chapter_draft.md。⚠️ content 参数中必须包含 <Main text> 和 </Main text> 标签，只有标签内的纯正文才会被写入文件。标签外可以放简短说明，但正文必须完整包裹在标签内。',
+    description: '将内容写入草稿文件（drafts/chapter_draft.md）。注意：这是草稿文件，不是正式章节。写入正式章节正文请使用 write_chapter_content。⚠️ content 参数中必须包含 <Main text> 和 </Main text> 标签，只有标签内的纯正文才会被写入文件。',
     parameters: {
       type: 'object',
       properties: {
@@ -113,13 +113,13 @@ const TOOL_WRITE_KNOWLEDGE: ToolDefinition = {
   type: 'function',
   function: {
     name: 'write_knowledge_file',
-    description: '写入或覆盖一个知识文件的内容',
+    description: '写入或覆盖一个知识文件的内容。写入章节专属纲要时使用完整路径如 chapters/004.outline.md，AI 会自动识别为章节纲要类型。写入章节正文不要用此工具，请用 write_chapter_content。',
     parameters: {
       type: 'object',
       properties: {
         fileName: {
           type: 'string',
-          description: '要写入的文件名（如 arc_outline.md, world_model.md）。写入章节专属纲要时使用完整路径如 chapters/004.outline.md，AI 会自动识别为章节纲要类型。',
+          description: '要写入的文件名（如 arc_outline.md, world_model.md）。写入章节专属纲要时使用完整路径如 chapters/004.outline.md。',
         },
         content: {
           type: 'string',
@@ -127,6 +127,28 @@ const TOOL_WRITE_KNOWLEDGE: ToolDefinition = {
         },
       },
       required: ['fileName', 'content'],
+    },
+  },
+}
+
+const TOOL_WRITE_CHAPTER: ToolDefinition = {
+  type: 'function',
+  function: {
+    name: 'write_chapter_content',
+    description: '直接写入章节正文到 chapters/NNN.md 文件。⚠️ content 参数中必须包含 <Main text> 和 </Main text> 标签，只有标签内的纯叙事正文才会被写入。这是写入章节正文的唯一正确工具，不要用 write_current_draft 或 write_knowledge_file 写章节正文。',
+    parameters: {
+      type: 'object',
+      properties: {
+        chapterIndex: {
+          type: 'number',
+          description: '章节编号，从 1 开始。例如第4章传 4，会自动对应到 chapters/004.md。使用前可先调用 list_chapters 确认当前章节编号。',
+        },
+        content: {
+          type: 'string',
+          description: '必须包含 <Main text> 和 </Main text> 标签。标签内是给读者阅读的完整叙事正文（场景+对话+情节，2000-5000字），标签外可以有一句简短说明。',
+        },
+      },
+      required: ['chapterIndex', 'content'],
     },
   },
 }
@@ -139,6 +161,7 @@ const TOOLS_WRITER: ToolDefinition[] = [
   TOOL_LIST_CHAPTERS,
   TOOL_READ_CHAPTER,
   TOOL_WRITE_KNOWLEDGE,
+  TOOL_WRITE_CHAPTER,
 ]
 
 // ========================================
@@ -253,9 +276,10 @@ export function buildSystemPrompt(args: {
 - 章纲格式：章节标题、场景设定、出场人物、情节节点、悬念铺设
 
 ### 章节续写
-- 通过 list_files 确认当前进度和章节编号
+- 通过 list_chapters 确认当前进度和章节编号
 - 读取最近一章保持连续性
-- 调用 write_current_draft 写入草稿
+- 调用 write_chapter_content 直接写入章节正文到 chapters/NNN.md（注意: 不是 write_current_draft）
+- write_chapter_content 的参数: chapterIndex（章节编号）+ content（含 Main text 标签的正文）
 - 每章 2000-5000 字，结尾保持悬念
 
 ### 草稿审核
