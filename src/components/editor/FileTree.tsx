@@ -243,7 +243,20 @@ export default function FileTree() {
                             onClick={() => {
                               // 打开章节专属的纲要文件 chapters/{N}.outline.md
                               const outlinePath = file.path.replace(/\.md$/, '.outline.md')
-                              const outlineFile = files.find((f) => f.path === outlinePath)
+                              let outlineFile = files.find((f) => f.path === outlinePath)
+                              // 如果纲要文件不存在（旧章节或导入的章节），自动创建
+                              if (!outlineFile && currentBookId) {
+                                const now = new Date().toISOString()
+                                outlineFile = {
+                                  name: `${file.name}·纲要`,
+                                  path: outlinePath,
+                                  type: 'chapter_outline',
+                                  content: `# ${file.name}·纲要\n\n`,
+                                  updatedAt: now,
+                                }
+                                const currentFiles = filesByBook[currentBookId] || []
+                                setFiles([...currentFiles, outlineFile])
+                              }
                               if (outlineFile) {
                                 openFileOrSummary(outlineFile.path, outlineFile.content)
                               }
