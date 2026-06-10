@@ -584,7 +584,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
    * 工具片段不包含具体内容 —— 只标识「使用了 XX 工具」
    */
   function parseMessageSegments(content: string): Array<{ type: 'text' | 'tool'; content?: string; toolName?: string }> {
-    const toolRegex = /<!--TOOL:([^:]+):([^:]+):([^-]+)-->\n([\s\S]*?)\n<!--TOOL_END:\2-->/g
+    const toolRegex = /<!--TOOL:([^:]+):([^:]+):([^>]+)-->\n?([\s\S]*?)\n?<!--TOOL_END:\2-->/g
     const segments: Array<{ type: 'text' | 'tool'; content?: string; toolName?: string }> = []
     let lastIdx = 0
     let match: RegExpExecArray | null
