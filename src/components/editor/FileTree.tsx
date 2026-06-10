@@ -22,8 +22,7 @@ const SECTIONS: FileGroup[] = [
     key: 'knowledge',
     icon: '📚',
     label: '知识',
-    predicate: (t) =>
-      !['chapter', 'chapter_draft'].includes(t) && t !== 'chapter_outline',
+    predicate: (t) => t !== 'chapter',
   },
 ]
 
@@ -32,6 +31,8 @@ const FILE_ICONS: Record<string, string> = {
   style_fingerprint: '🎨',
   master_outline: '📋',
   arc_outline: '📋',
+  chapter_outline: '📝',
+  chapter_draft: '✏️',
   status_card: '📊',
   brainstorm: '💡',
   error_archive: '⚠️',
