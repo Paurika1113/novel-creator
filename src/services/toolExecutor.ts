@@ -351,7 +351,16 @@ function writeKnowledgeFile(fileName: string, content: string): string {
     updateFile(file.path, extracted, file.type)
     ensureChapterPlaceholderExists(file.path)
   } else {
-    const path = isFullPath ? fileName : `knowledge/${fileName}`
+    // 推断完整路径：AI 可能传完整路径或仅文件名
+    let path: string
+    if (isFullPath) {
+      path = fileName
+    } else if (/^\d+\.outline\.md$/.test(fileName)) {
+      // AI 传了 "005.outline.md" 但没加 chapters/ 前缀 → 自动补全
+      path = `chapters/${fileName}`
+    } else {
+      path = `knowledge/${fileName}`
+    }
 
     // 根据路径模式推断 fileType
     let fileType: string = 'other'
@@ -363,27 +372,48 @@ function writeKnowledgeFile(fileName: string, content: string): string {
     const bookId = store.currentBookId
     if (bookId) {
       const currentFiles = store.filesByBook[bookId] || []
-      const newFile: KnowledgeFile = {
+
+      // 构建新文件列表 — 原子操作，一次性 setFiles
+      const newFiles: KnowledgeFile[] = [{
         name: path.split('/').pop()?.replace(/\.md$/, '') || path,
         path,
         type: fileType as any,
         content: extracted,
         updatedAt: new Date().toISOString(),
+      }]
+
+      // 如果是章节 outline，同步创建占位章节文件（单次 setFiles）
+      if (fileType === 'chapter_outline') {
+        const chapterPath = path.replace(/\.outline\.md$/, '.md')
+        if (!currentFiles.some((f) => f.path === chapterPath)) {
+          const chNum = chapterPath.match(/chapters\/(\d+)\.md$/)?.[1] || ''
+          newFiles.push({
+            name: `第${chNum}章`,
+            path: chapterPath,
+            type: 'chapter',
+            content: `# 第${chNum}章\n\n`,
+            updatedAt: new Date().toISOString(),
+          })
+        }
       }
-      const result: KnowledgeFile[] = [...currentFiles, newFile]
+
+      const result = [...currentFiles, ...newFiles]
       store.setFiles(result)
-      try {
-        localStorage.setItem(`nc:${bookId}:${path}`, extracted)
-      } catch (e) {
-        console.warn('Failed to persist file content:', e)
+
+      // 持久化所有新文件
+      for (const nf of newFiles) {
+        try {
+          localStorage.setItem(`nc:${bookId}:${nf.path}`, nf.content)
+        } catch (e) {
+          console.warn('Failed to persist file content:', e)
+        }
       }
+
       // 如果编辑器正好打开此路径，立即刷新
       const currentState = useEditorStore.getState()
       if (currentState.currentFilePath === path) {
         useEditorStore.setState({ editorContent: extracted, isDirty: false })
       }
-      // 同步创建对应章节文件并持久化
-      ensureChapterPlaceholderExists(path)
       return `✅ 文件 "${path}" 已创建。正文长度：${extracted.length} 字符。`
     }
   }
