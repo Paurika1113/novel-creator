@@ -650,11 +650,11 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
   function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
     const val = e.target.value
     setInput(val)
-    // 输入 / 时弹出斜杠命令菜单
-    if (val === '/') {
+    // 输入 / 时弹出斜杠命令菜单（同时处理快速输入情况）
+    if (val.startsWith('/')) {
       setShowSlashMenu(true)
       setSlashIndex(0)
-    } else if (showSlashMenu && !val.startsWith('/')) {
+    } else if (showSlashMenu) {
       setShowSlashMenu(false)
     }
   }
@@ -768,33 +768,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           </div>
         )}
 
-        {/* Skill buttons + workflow actions */}
-        <div className="chat-action-buttons">
-          {workflow.phase !== 'idle' && workflow.phase !== 'archived' ? (
-            workflow.getCurrentActions().map((action) => (
-              <button
-                key={action.id}
-                className={`chat-action-btn${action.variant === 'primary' ? ' active' : ''}`}
-                onClick={() => handleWorkflowAction(action.id)}
-                disabled={isStreaming || action.disabled}
-              >
-                {action.icon} {action.label}
-              </button>
-            ))
-          ) : (
-            actionButtons.map((action) => (
-              <button
-                key={action.id}
-                className={`chat-action-btn${action.id === 'next_chapter' || action.id === 'continue' ? ' active' : ''}`}
-                onClick={() => handleActionClick(action)}
-                disabled={isStreaming || action.disabled}
-              >
-                {action.icon} {action.label}
-              </button>
-            ))
-          )}
-        </div>
-
         <div className="chat-input-row">
           {showSlashMenu && (
             <span className="chat-input-slash-indicator">/</span>
@@ -824,29 +797,6 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
           >
             {isStreaming ? '■' : '➤'}
           </button>
-        </div>
-
-        <div className="chat-model-selector">
-          <select
-            className="chat-model-select"
-            value={model || ''}
-            onChange={(e) => {
-              const selectedModel = e.target.value
-              const found = savedModels.find((sm) => sm.name === selectedModel)
-              useSettingsStore.getState().updateSettings({
-                model: selectedModel,
-                modelContextWindow: found?.contextWindow || 200000,
-              })
-            }}
-          >
-            {savedModels.length === 0 ? (
-              <option value="">请先配置模型</option>
-            ) : (
-              savedModels.map((sm) => (
-                <option key={sm.name} value={sm.name}>{sm.name}</option>
-              ))
-            )}
-          </select>
         </div>
       </div>
     </div>

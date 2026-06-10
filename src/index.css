@@ -1526,6 +1526,7 @@ body {
   padding: 8px 12px;
   border-top: 1px solid var(--border);
   flex-shrink: 0;
+  position: relative; /* 为斜杠命令菜单提供定位锚点 */
 }
 .chat-input-row {
   display: flex;
@@ -1654,8 +1655,9 @@ body {
 .chat-slash-menu {
   position: absolute;
   bottom: 100%;
-  left: 12px;
-  width: calc(100% - 24px);
+  left: 0;
+  right: 0;
+  margin: 0 12px 8px 12px;
   max-height: 280px;
   overflow-y: auto;
   background: var(--bg-card);
