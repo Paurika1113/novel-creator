@@ -711,25 +711,33 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
         {isStreaming && (() => {
           const streamMsg = messages.find((m) => m.id === streamingMessageId)
           const streamContent = streamMsg?.content || ''
-          const segments = parseMessageSegments(streamContent)
-          return segments.map((seg, si) => {
-            if (seg.type === 'tool') {
-              return (
-                <div key={`s-${si}`} className="chat-tool-mini-line">
-                  🔧 使用了 {seg.toolName}
-                </div>
-              )
-            }
+
+          // 流式响应中: 去掉所有工具标记内容, 只显示AI文字
+          const displayText = streamContent
+            .replace(/<!--TOOL:[\s\S]*?<!--TOOL_END:[^>]+-->/gs, '')
+            .trim()
+
+          if (!displayText) {
+            // 尚无内容 → 空白气泡+闪烁光标
             return (
-              <div key={`s-${si}`} className="chat-message assistant">
+              <div className="chat-message assistant">
                 <div className="chat-message-avatar">🤖</div>
                 <div className="chat-message-content">
-                  {renderTextLines(seg.content || '')}
-                  {si === segments.length - 1 && seg.type === 'text' && <span className="chat-message-cursor">▊</span>}
+                  <span className="chat-message-cursor">▊</span>
                 </div>
               </div>
             )
-          })
+          }
+
+          return (
+            <div className="chat-message assistant">
+              <div className="chat-message-avatar">🤖</div>
+              <div className="chat-message-content">
+                {renderTextLines(displayText)}
+                <span className="chat-message-cursor">▊</span>
+              </div>
+            </div>
+          )
         })()}
 
         <div ref={messagesEndRef} />
