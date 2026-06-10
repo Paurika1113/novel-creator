@@ -97,12 +97,14 @@ export const useEditorStore = create<EditorStore>()(
         } catch { /* ignore */ }
         set((state) => {
           const bookFiles = state.filesByBook[currentBookId] || []
+          const isDeletingCurrent = state.currentFilePath === path
           return {
             filesByBook: {
               ...state.filesByBook,
               [currentBookId]: bookFiles.filter((f) => f.path !== path),
             },
-            currentFilePath: state.currentFilePath === path ? null : state.currentFilePath,
+            currentFilePath: isDeletingCurrent ? null : state.currentFilePath,
+            editorContent: isDeletingCurrent ? '' : state.editorContent,
           }
         })
       },

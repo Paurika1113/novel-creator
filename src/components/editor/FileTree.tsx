@@ -128,6 +128,14 @@ export default function FileTree() {
     const file = files.find((f) => f.path === path)
     const label = file?.name || path.split('/').pop() || '文件'
     if (!confirm(`确认删除「${label}」？此操作不可撤销。`)) return
+
+    // 先清理 expandedChapters 中的引用，避免 React Fiber reconciliation 错位
+    setExpandedChapters((prev) => {
+      const next = new Set(prev)
+      next.delete(path)
+      return next
+    })
+
     removeFile(path)
   }
 
