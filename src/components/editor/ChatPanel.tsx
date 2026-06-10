@@ -22,7 +22,7 @@ const SLASH_COMMANDS = [
   { id: 'write', icon: '➕', label: '写新章', prompt: '请先调用 list_chapters 确认章节编号，再读取对应 chapters/{编号}.outline.md 的纲要，最后调用 write_chapter_content 直接写入 chapters/{编号}.md。不要使用 write_current_draft。' },
   { id: 'continue', icon: '✏️', label: '续写', prompt: '请读取当前草稿 chapter_draft.md，在末尾继续追加内容，保持叙事连贯。' },
   { id: 'review', icon: '📋', label: '审核草稿', prompt: '请从世界观一致性、大纲匹配度、前文连续性、文风一致性和文本质量五个维度审核当前草稿，输出结构化审核报告。' },
-  { id: 'polish', icon: '🎨', label: '润色文风', prompt: '请读取当前草稿，从语言层、叙事层和结构层进行润色优化。完成后用 write_current_draft 覆盖原草稿。' },
+  { id: 'polish', icon: '🎨', label: '润色文风', prompt: '请读取当前草稿，从语言层、叙事层和结构层进行润色优化。完成后用 write_chapter_content 覆盖正式章节文件。' },
   { id: 'world', icon: '🌍', label: '世界观', prompt: '请读取已归档章节，提取和整理世界观设定，生成或更新 world_model.md。' },
   { id: 'summarize', icon: '🔄', label: '摘要', prompt: '请读取已归档章节，重新生成章节摘要，更新 summary.md 和 status_card.md。' },
 ]
@@ -75,7 +75,7 @@ function getActionButtons(
         icon: '🔄',
         label: '重写',
         skill: 'write_chapter',
-        prompt: '请重新撰写当前章节，在保持核心情节不变的前提下优化叙事节奏、人物描写和语言风格。',
+        prompt: '请重新撰写当前章节，在保持核心情节不变的前提下优化叙事节奏、人物描写和语言风格。完成后使用 write_chapter_content 直接写入章节文件。',
       },
     ]
   }
@@ -87,7 +87,7 @@ function getActionButtons(
         icon: '🔄',
         label: '重写',
         skill: 'write_chapter',
-        prompt: '请重新撰写当前草稿，在保持核心情节不变的前提下优化叙事节奏、人物描写和语言风格。',
+        prompt: '请重新撰写当前草稿，在保持核心情节不变的前提下优化叙事节奏、人物描写和语言风格。完成后使用 write_chapter_content 直接写入章节文件。',
       },
     ]
 
