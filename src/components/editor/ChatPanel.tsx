@@ -8,7 +8,7 @@ import { usePersonaStore } from '../../stores/personaStore'
 import { streamChatWithTools } from '../../services/llm'
 import { executeToolCall } from '../../services/toolExecutor'
 import { calculateContextBudget, assembleContext, getContextReport } from '../../services/contextAssembler'
-import { getAgentTools, buildSystemPrompt } from '../../services/agents'
+import { getAgentTools, buildSystemPrompt } from '../../services/skills'
 import { buildMemoryContext } from '../../services/memoryContext'
 import type { ChatMessage, SkillDef, SKILLS } from '../../types'
 import type { LLMMessage } from '../../services/llm'
@@ -228,7 +228,7 @@ export default function ChatPanel({ onArchive }: { onArchive?: () => void }) {
 
     const msgId = startStreaming()
     // 所有 Skill 共用完整工具集
-    const tools = getAgentTools('continuation')
+    const tools = getAgentTools()
 
     try {
       const book = books.find((b) => b.id === currentBookId)
