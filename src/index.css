@@ -932,13 +932,38 @@ body {
   padding: 6px 8px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--text-secondary);
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.3px;
   cursor: default;
+  user-select: none;
 }
 .file-tree-section-title-icon {
   font-size: 14px;
+}
+.file-tree-add-btn {
+  margin-left: auto;
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.12s, background 0.12s;
+}
+.file-tree-section-title:hover .file-tree-add-btn {
+  opacity: 1;
+}
+.file-tree-add-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .file-tree-items {
@@ -993,6 +1018,67 @@ body {
 }
 .file-tree-item-badge.draft {
   color: var(--warning);
+}
+
+/* File tree item hover actions (like DeepSeek-GUI) */
+.file-tree-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  opacity: 0;
+  transition: opacity 0.1s;
+  flex-shrink: 0;
+  margin-left: 2px;
+}
+.file-tree-item:hover .file-tree-item-actions {
+  opacity: 1;
+}
+.file-tree-action-btn {
+  width: 18px;
+  height: 18px;
+  border: none;
+  background: transparent;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+}
+.file-tree-action-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+.file-tree-action-btn.danger:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* Inline rename input */
+.file-tree-rename-input {
+  flex: 1;
+  min-width: 0;
+  padding: 1px 4px;
+  border: 1px solid var(--primary);
+  border-radius: 3px;
+  font-size: 12px;
+  font-family: inherit;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  outline: none;
+}
+
+/* Empty row for chapters */
+.file-tree-empty-row {
+  padding: 12px 16px;
+  text-align: center;
+}
+.file-tree-empty-text {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 /* Chapter tree branch: expand/collapse caret */
