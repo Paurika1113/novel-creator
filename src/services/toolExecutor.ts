@@ -295,6 +295,32 @@ function writeKnowledgeFile(fileName: string, content: string): string {
     : findFile((f) => f.name === fileName) || findFile((f) => f.path.endsWith('/' + fileName))
 
   if (file) {
+    // 如果已有文件但类型不对（如被旧版 writeKnowledgeFile 创建为 'other'），强制修正
+    const effectiveType = file.path.match(/^chapters\/\d+\.md$/) ? 'chapter' : file.type
+    // 修正文件树中的类型（即使 content 没变，类型也要改过来）
+    if (effectiveType !== file.type) {
+      const store = useEditorStore.getState()
+      const bookId = store.currentBookId
+      if (bookId) {
+        const currentFiles = store.filesByBook[bookId] || []
+        const idx = currentFiles.findIndex((f) => f.path === file.path)
+        if (idx >= 0) {
+          const updated = [...currentFiles]
+          updated[idx] = { ...file, type: effectiveType as any, content: extracted, updatedAt: new Date().toISOString() }
+          store.setFiles(updated)
+        }
+      }
+      try {
+        const bId = useEditorStore.getState().currentBookId
+        if (bId) localStorage.setItem(`nc:${bId}:${file.path}`, extracted)
+      } catch { /* ignore */ }
+      // 如果编辑器正好打开此文件，刷新内容
+      const cur = useEditorStore.getState()
+      if (cur.currentFilePath === file.path) {
+        useEditorStore.setState({ editorContent: extracted, isDirty: false })
+      }
+      return `✅ 文件 "${fileName}" 已更新（类型已修正）。正文长度：${extracted.length} 字符。`
+    }
     updateFile(file.path, extracted, file.type)
   } else {
     const path = isFullPath ? fileName : `knowledge/${fileName}`
@@ -303,6 +329,7 @@ function writeKnowledgeFile(fileName: string, content: string): string {
     let fileType: string = 'other'
     if (path.match(/\.outline\.md$/)) fileType = 'chapter_outline'
     else if (path.startsWith('drafts/')) fileType = 'chapter_draft'
+    else if (path.match(/^chapters\/\d+\.md$/)) fileType = 'chapter'
 
     const store = useEditorStore.getState()
     const bookId = store.currentBookId
